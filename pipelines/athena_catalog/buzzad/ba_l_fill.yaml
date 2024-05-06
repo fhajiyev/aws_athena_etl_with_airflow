@@ -1,0 +1,47 @@
+---
+pipeline_key: ba_l_fill
+pipeline_type: athena_catalog
+pipeline_dag_configs:
+  start_date: 2020-02-10 08:10:00
+  schedule_interval: "0 * * * *"
+
+athena:
+  database: prod_buzzad
+  table: l_fill
+  location: s3://prod-buzzvil-data-lake/buzzad/landing/fill
+  partition:
+    name: partition_timestamp
+    location: s3://prod-buzzvil-data-lake/buzzad/landing/fill/year={year}/month={month}/day={day}/hour={hour}
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      filled                 BOOLEAN,
+      position               INT,
+      request_id             VARCHAR(64),
+      viewer_id              VARCHAR(64),
+      publisher_user_id      VARCHAR(255),
+      client_ip              VARCHAR(16),
+      request_country        VARCHAR(2),
+      request_sex            VARCHAR(1),
+      request_age            BIGINT,
+      request_region         VARCHAR(128),
+      request_carrier        VARCHAR(128),
+      request_device         VARCHAR(20),
+      request_network_type   VARCHAR(8),
+      unit_id                BIGINT,
+      unit_type              VARCHAR(10),
+      lineitem_id            BIGINT,
+      item_type              VARCHAR(10),
+      revenue_type           VARCHAR(10),
+      unit_price             DECIMAL(18,9),
+      is_incentive           BOOLEAN,
+      adnetwork_id           BIGINT,
+      time                   TIMESTAMP
+    )
+    PARTITIONED BY (partition_timestamp TIMESTAMP)
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'ignore.malformed.json'='true'
+    )
+    LOCATION '{location}';

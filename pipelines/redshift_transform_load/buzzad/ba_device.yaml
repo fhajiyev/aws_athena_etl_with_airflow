@@ -1,0 +1,66 @@
+# Note that
+# - interval '6 hours' is actually "interval - 21 (execution time) + 24 (day offset) - 9( utc conversion)"
+# + interval '3 hours' is actually "interval - 21 (execution time) + 24 (day offset)"
+---
+pipeline_key: ba_device
+pipeline_type: redshift_transform_load
+pipeline_dag_configs:
+  start_date: 2019-07-22 00:00:00
+  schedule_interval: "0 * * * *"
+  depends_on_past: False
+transform:
+  select_query: |
+    SELECT
+      viewer_id,
+      unit_id,
+      device_name,
+      year_of_birth,
+      sex,
+      carrier,
+      region,
+      platform,
+      country,
+      created_at
+    FROM
+      ba_device_staging
+  delete_query: |
+    DELETE FROM
+      ba_device_staging;
+
+redshift:
+  table_name: ba_device
+  fields:
+  - viewer_id
+  - unit_id
+  - device_name
+  - year_of_birth
+  - sex
+  - carrier
+  - region
+  - platform
+  - country
+  - created_at
+  unique_key_list:
+  - viewer_id
+  - unit_id
+  increment_key: created_at
+  increment_key_type: timestamp
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      viewer_id                VARCHAR(45)    NOT NULL       ENCODE ZSTD,
+      unit_id                  INT8           DEFAULT NULL   ENCODE ZSTD,
+      device_name              VARCHAR(20)    DEFAULT NULL   ENCODE ZSTD,
+      year_of_birth            INT4           DEFAULT NULL   ENCODE ZSTD,
+      sex                      CHAR(1)        DEFAULT NULL   ENCODE ZSTD,
+      carrier                  VARCHAR(128)   DEFAULT NULL   ENCODE ZSTD,
+      region                   VARCHAR(128)   DEFAULT NULL   ENCODE ZSTD,
+      platform                 CHAR(1)        DEFAULT NULL   ENCODE ZSTD,
+      country                  CHAR(2)        DEFAULT NULL   ENCODE ZSTD,
+      created_at               TIMESTAMP      NOT NULL       ENCODE ZSTD,
+      PRIMARY KEY(viewer_id)
+    )
+    DISTKEY(viewer_id)
+    SORTKEY(created_at)
+    ;

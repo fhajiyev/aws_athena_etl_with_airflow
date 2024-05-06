@@ -1,0 +1,63 @@
+---
+pipeline_key: biddersvc_g_notice
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-09-01 00:00:00
+  schedule_interval: "0 * * * *"
+upstream_dependencies:
+  - dag_id: athena_catalog_biddersvc_l_notice
+    timedelta_hours: 0
+athena:
+  workgroup: biddersvc
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+      format = 'PARQUET',
+      parquet_compression = 'SNAPPY',
+      external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+    SELECT
+      payload['id'] AS auction_id,
+      payload['bidid'] AS bid_id,
+      payload['price'] AS auction_price,
+      payload['ifa'] AS ifa,
+      payload['bidprice'] AS bid_price,
+      payload['lineitem_id'] AS lineitem_id,
+      payload['creative_id'] AS creative_id,
+      log_at AS event_timestamp
+    FROM
+      {{{{ var.value.get('server_env', 'prod') }}}}_biddersvc.l_notice
+    WHERE
+      partition_timestamp >= TIMESTAMP'{start_time}' AND
+      partition_timestamp < TIMESTAMP'{end_time}'
+    );
+  output_bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  output_prefix: biddersvc/gold/notice/year={year}/month={month}/day={day}/hour={hour}
+  file_key: biddersvc_g_notice
+  file_extension: parquet
+
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      auction_id        STRING,
+      bid_id            STRING,
+      auction_price     DOUBLE,
+      ifa               VARCHAR(40),
+      bid_price         DOUBLE,
+      lineitem_id       BIGINT,
+      creative_id       INT,
+      event_timestamp   TIMESTAMP
+    )
+    PARTITIONED BY (
+      partition_timestamp TIMESTAMP
+    )
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY")
+    ;
+  database: "{{ var.value.get('server_env', 'prod') }}_biddersvc"
+  table: g_notice
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/biddersvc/gold/notice"
+  partition:
+      name: partition_timestamp
+      value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+      location: "s3://{{{{ var.value.get('server_env', 'prod') }}}}-buzzvil-data-lake/biddersvc/gold/notice/year={year}/month={month}/day={day}/hour={hour}"

@@ -1,0 +1,77 @@
+# CREATE TABLE `unit_group_adnetwork_mappings` (
+#   `id` int(11) NOT NULL AUTO_INCREMENT,
+#   `unit_group_id` bigint(20) NOT NULL,
+#   `adnetwork_id` bigint(20) NOT NULL,
+#   `revenue_type` varchar(10) NOT NULL,
+#   `created_at` datetime(6) NOT NULL,
+#   `updated_at` datetime(6) NOT NULL,
+#   `is_active` varchar(1) NOT NULL,
+#   `countries` varchar(255),
+#   `country` varchar(2),
+#   `sales` decimal(18,9),
+#   `automation_restricted_word` varchar(1000),
+#   PRIMARY KEY (`id`)
+# ) ENGINE=InnoDB AUTO_INCREMENT=232 DEFAULT CHARSET=utf8;
+
+---
+pipeline_key: ba_unit_group_adnetwork_mapping
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: buzzad_mysql
+  table_name: unit_group_adnetwork_mappings
+  fields:
+  - id
+  - unit_group_id
+  - adnetwork_id
+  - revenue_type
+  - created_at
+  - updated_at
+  - is_active
+  - countries
+  - country
+  - sales
+  - automation_restricted_word
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: ba_unit_group_adnetwork_mapping
+  fields:
+  - id
+  - unit_group_id
+  - adnetwork_id
+  - revenue_type
+  - created_at
+  - updated_at
+  - is_active
+  - countries
+  - country
+  - sales
+  - automation_restricted_word
+  copy_method: replace
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                           BIGINT          ENCODE AZ64,
+      unit_group_id                BIGINT          ENCODE AZ64,
+      adnetwork_id                 BIGINT          ENCODE AZ64,
+      revenue_type                 VARCHAR(10)     ENCODE ZSTD,
+      created_at                   TIMESTAMP       ENCODE AZ64,
+      updated_at                   TIMESTAMP       ENCODE AZ64,
+      is_active                    VARCHAR(1)      ENCODE ZSTD,
+      countries                    VARCHAR(255)    ENCODE ZSTD,
+      country                      VARCHAR(2)      ENCODE ZSTD,
+      sales                        DECIMAL(27,9)   ENCODE AZ64,
+      automation_restricted_word   VARCHAR(1024)   ENCODE ZSTD
+    )
+    DISTSTYLE ALL
+    SORTKEY(id)
+    ;
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id

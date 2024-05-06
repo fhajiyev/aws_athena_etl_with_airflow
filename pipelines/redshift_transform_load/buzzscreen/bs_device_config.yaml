@@ -1,0 +1,45 @@
+---
+pipeline_key: bs_device_config
+pipeline_type: redshift_transform_load
+pipeline_dag_configs:
+  start_date: 2019-03-01 00:00:00
+  schedule_interval: "@hourly"
+transform:
+  select_query: |
+    SELECT
+      device_id,
+      CASE
+        WHEN (video_autoplay = 1) THEN 'disabled'
+        WHEN (video_autoplay = 2) THEN 'enabled'
+        WHEN (video_autoplay = 3) THEN 'on_wifi'
+      END as video_autoplay,
+      created_at
+    FROM
+      bs_device_config_staging
+  delete_query: |
+    DELETE
+    FROM
+      bs_device_config_staging;
+
+
+redshift:
+  table_name: bs_device_config
+  fields:
+  - device_id
+  - video_autoplay
+  - created_at
+  unique_key_list:
+  - device_id
+  increment_key: created_at
+  increment_key_type: timestamp
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      device_id          INT8          NOT NULL   ENCODE ZSTD,
+      video_autoplay     VARCHAR(10)   NOT NULL   ENCODE ZSTD,
+      created_at         TIMESTAMP     NOT NULL   ENCODE ZSTD
+    )
+    DISTKEY(device_id)
+    SORTKEY(created_at, device_id)
+    ;

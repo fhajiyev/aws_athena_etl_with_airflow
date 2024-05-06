@@ -1,0 +1,136 @@
+---
+pipeline_key: buzzml_g_preprocessed_user_event
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-11-01 00:00:00
+  schedule_interval: "0 * * * *"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency-oracle
+    - trigger: sla_miss
+      args:
+        channel: data-emergency-oracle
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: athena_catalog_ba_l_user_event
+    timedelta_hours: 0
+  - dag_id: redshift_s3_sync_ba_l_product
+    timedelta_hours: 0
+
+sensor_soft_fail: false
+
+athena:
+  workgroup: oracle
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+          format = 'PARQUET',
+          parquet_compression = 'SNAPPY',
+          external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+        SELECT
+          CAST(viewer_id AS VARCHAR(64)) AS viewer_id,
+          CAST(lineitem_id AS BIGINT) AS lineitem_id,
+          CAST(unit_id AS BIGINT) AS unit_id,
+          CAST(event_type AS VARCHAR(60)) AS event_type,
+          CAST(event_time AS VARCHAR(64)) AS event_time,
+          CAST(product_id AS BIGINT) AS product_id,
+          CAST(product_feed_id AS BIGINT) AS product_feed_id,
+          CAST(category AS VARCHAR(255)) AS category
+        FROM(
+          WITH
+          flatten_event AS(
+            SELECT
+              viewer_id,
+              lineitem_id,
+              unit_id,
+              event_type,
+              DATE_PARSE(pu.event_time,'%Y-%m-%d %H:%i:%s') AS event_time,
+              event_source_id,
+              product_code
+            FROM
+              prod_buzzad.l_user_event AS pu
+            CROSS JOIN UNNEST(SPLIT(product_codes, ',')) AS t (product_code)
+            WHERE
+              pu.partition_timestamp     >= TIMESTAMP'{start_time}'
+              AND pu.partition_timestamp <  TIMESTAMP'{end_time}'
+              AND DATE_PARSE(pu.event_time,'%Y-%m-%d %H:%i:%s') >= pu.partition_timestamp
+              AND pu.extra_segment1 != ''
+              AND pu.viewer_id != ''
+              AND pu.event_type IN ('view_detail', 'add_to_cart', 'purchase')
+          ),
+          product AS (
+            SELECT
+              id,
+              ARBITRARY(category1) AS category,
+              ARBITRARY(product_feed_id) AS product_feed_id,
+              ARBITRARY(code) AS code
+            FROM
+              prod_buzzad.l_product
+            GROUP BY
+              id
+          )
+          -- product AS (
+          --   SELECT
+          --     id,
+          --     category1 AS category,
+          --     product_feed_id,
+          --     code
+          --   FROM
+          --     prod_buzzad.g_product_dim
+          --   WHERE
+          --     partition_timestamp = TIMESTAMP'{start_time}'
+          -- )
+          SELECT
+            pu.viewer_id,
+            pu.lineitem_id,
+            pu.unit_id,
+            pu.event_type,
+            pu.event_time,
+            pp.id AS product_id,
+            pp.product_feed_id,
+            pp.category
+          FROM
+            flatten_event AS pu
+          INNER JOIN prod_buzzml.product_mapping AS pm
+            ON pu.event_source_id = pm.event_source_id
+          INNER JOIN product AS pp
+            ON pm.product_feed_id = pp.product_feed_id
+            AND pu.product_code = pp.code
+        )
+    );
+
+  output_bucket: prod-buzzvil-data-lake
+  output_prefix: buzzml/gold/preprocessed_user_event/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzml_g_preprocessed_user_event
+  file_extension: parquet
+
+  database: prod_buzzml
+  table: g_preprocessed_user_event
+  location: s3://prod-buzzvil-data-lake/buzzml/gold/preprocessed_user_event
+
+  partition:
+    name: partition_timestamp
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+    location: s3://prod-buzzvil-data-lake/buzzml/gold/preprocessed_user_event/year={year}/month={month}/day={day}/hour={hour}
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      viewer_id          VARCHAR(64),
+      lineitem_id        BIGINT,
+      unit_id            BIGINT,
+      event_type         VARCHAR(60),
+      event_time         VARCHAR(64),
+      product_id         BIGINT,
+      product_feed_id    BIGINT,
+      category           VARCHAR(255)
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    tblproperties("parquet.compress"="SNAPPY");

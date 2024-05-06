@@ -1,0 +1,55 @@
+---
+pipeline_key: bridgesvc_reward
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: bridgesvc_mysql
+  table_name: rewards
+  fields:
+  - id
+  - account_id
+  - resource_id
+  - resource_type
+  - event
+  - amount
+  - status
+  - created_at
+  - updated_at
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id
+redshift:
+  table_name: bridgesvc_reward
+  fields:
+  - id
+  - account_id
+  - resource_id
+  - resource_type
+  - event
+  - amount
+  - status
+  - created_at
+  - updated_at
+  copy_method: incremental
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id              INT8           ENCODE AZ64,
+      account_id      VARCHAR(300)   ENCODE ZSTD,
+      resource_id     VARCHAR(300)   ENCODE ZSTD,
+      resource_type   INT8           ENCODE AZ64,
+      event           INT8           ENCODE AZ64,
+      amount          INT8           ENCODE AZ64,
+      status          INT8           ENCODE AZ64,
+      created_at      TIMESTAMP      ENCODE ZSTD,
+      updated_at      TIMESTAMP      ENCODE ZSTD
+    )
+    DISTKEY(account_id)
+    SORTKEY(id)
+    ;
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id

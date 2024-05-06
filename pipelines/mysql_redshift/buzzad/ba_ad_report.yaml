@@ -1,0 +1,48 @@
+---
+pipeline_key: ba_ad_report
+pipeline_type: mysql_redshift
+incremental_sync: True
+mysql:
+  conn_id: buzzad_mysql
+  table_name: ad_report
+  fields:
+  - id
+  - unit_id
+  - lineitem_id
+  - report_reason
+  - viewer_id
+  - created_at
+  - updated_at
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id
+redshift:
+  table_name: ba_ad_report
+  fields:
+  - id
+  - unit_id
+  - lineitem_id
+  - report_reason
+  - viewer_id
+  - created_at
+  - updated_at
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id              INT8          NOT NULL   ENCODE ZSTD,
+      unit_id         INT8          NOT NULL   ENCODE ZSTD,
+      lineitem_id     INT8          NOT NULL   ENCODE ZSTD,
+      report_reason   INT2          NOT NULL   ENCODE ZSTD,
+      viewer_id       VARCHAR(64)   NOT NULL   ENCODE ZSTD,
+      created_at      TIMESTAMP     NOT NULL   ENCODE ZSTD,
+      updated_at      TIMESTAMP     NOT NULL   ENCODE ZSTD
+    )
+    DISTKEY (id)
+    SORTKEY (updated_at)
+    ;
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id

@@ -1,0 +1,85 @@
+# data_at : KST
+---
+pipeline_key: ba_g_statistics_adgroup_video_daily_unique_impression
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-07-25 00:00:00
+  schedule_interval: "0 15 * * *"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency
+    - trigger: sla_miss
+      args:
+        channel: data-emergency
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: athena_catalog_ba_l_playtime
+    timedelta_hours: 0
+
+  - dag_id: athena_catalog_ba_l_click
+    timedelta_hours: 0
+
+  - dag_id: athena_catalog_ba_l_lineitem
+    timedelta_hours: 0
+
+athena:
+  workgroup: buzzad
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+      format = 'PARQUET',
+      parquet_compression = 'SNAPPY',
+      external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+      SELECT
+        DATE_TRUNC('day', p.created_at + INTERVAL '9' hour) - INTERVAL '9' hour AS data_at,
+        l.ad_group_id,
+        COUNT(DISTINCT c.viewer_id) AS unique_impression
+      FROM
+        prod_buzzad.l_playtime p
+      INNER JOIN
+        prod_buzzad.l_lineitem l ON l.id = p.lineitem_id
+      INNER JOIN
+        prod_buzzad.l_click c ON c.click_id = CAST(p.raw_data_click_id AS VARCHAR)
+      WHERE
+        p.partition_timestamp >= TIMESTAMP'{start_time}' AND
+        p.partition_timestamp < TIMESTAMP'{end_time}' AND
+        c.partition_timestamp >= TIMESTAMP'{start_time}' - INTERVAL '1' hour AND
+        c.partition_timestamp < TIMESTAMP'{end_time}' AND
+        l.partition_timestamp > TIMESTAMP'{start_time}' - INTERVAL '1' hour AND
+        l.partition_timestamp <= TIMESTAMP'{start_time}' AND
+        l.ad_group_id IS NOT NULL
+      GROUP BY
+        1, 2
+    );
+  output_bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  output_prefix: buzzad/gold/statistics_adgroup_video_daily_unique_impression/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzad_gold_statistics_adgroup_video_daily_unique_impression
+  file_extension: parquet
+
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      data_at           TIMESTAMP,
+      ad_group_id       BIGINT,
+      unique_impression BIGINT
+    )
+    PARTITIONED BY (
+      partition_timestamp TIMESTAMP
+    )
+    STORED AS PARQUET
+    LOCATION '{location}'
+    tblproperties("parquet.compress"="SNAPPY")
+    ;
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzad"
+  table: g_statistics_adgroup_video_daily_unique_impression
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/buzzad/gold/statistics_adgroup_video_daily_unique_impression"
+  partition:
+    name: partition_timestamp
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+    location: "s3://{{{{ var.value.get('server_env', 'prod') }}}}-buzzvil-data-lake/buzzad/gold/statistics_adgroup_video_daily_unique_impression/year={year}/month={month}/day={day}/hour={hour}"

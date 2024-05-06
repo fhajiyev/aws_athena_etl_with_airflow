@@ -1,0 +1,112 @@
+---
+pipeline_key: segmentsvc_g_event_ba_user_event
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-08-17 00:00:00
+  schedule_interval: "0 * * * *"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: dev-emergency-mugshot
+    - trigger: sla_miss
+      args:
+        channel: dev-emergency-mugshot
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: athena_catalog_ba_l_user_event
+    timedelta_hours: 0
+
+athena:
+  workgroup: segmentsvc
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+      format = 'PARQUET',
+      parquet_compression = 'SNAPPY',
+      external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+    SELECT
+      event_source_id AS data_source_id,
+      event_type,
+      CAST(event_time AS TIMESTAMP) AS event_timestamp,
+      MAP(
+        ARRAY[
+          'event_source_id',
+          'tracker_id',
+          'viewer_id',
+          'viewer_id_encrypted',
+          'event_name',
+          'event_time',
+          'event_revenue',
+          'event_currency',
+          'extra_segment1',
+          'extra_segment2',
+          'unit_id',
+          'click_id',
+          'lineitem_id',
+          'creative_id',
+          'package_name',
+          'publisher_id',
+          'sub_publisher_id'
+        ],
+        ARRAY[
+          CAST(event_source_id AS VARCHAR),
+          CAST(tracker_id AS VARCHAR),
+          CAST(viewer_id AS VARCHAR),
+          CAST(viewer_id_encrypted AS VARCHAR),
+          CAST(event_name AS VARCHAR),
+          CAST(event_time AS VARCHAR),
+          CAST(event_revenue AS VARCHAR),
+          CAST(event_currency AS VARCHAR),
+          CAST(extra_segment1 AS VARCHAR),
+          CAST(extra_segment2 AS VARCHAR),
+          CAST(unit_id AS VARCHAR),
+          CAST(click_id AS VARCHAR),
+          CAST(lineitem_id AS VARCHAR),
+          CAST(creative_id AS VARCHAR),
+          CAST(package_name AS VARCHAR),
+          CAST(publisher_id AS VARCHAR),
+          CAST(sub_publisher_id AS VARCHAR)
+        ]
+      ) AS payload,
+      UPPER(SPLIT_PART(viewer_id, ':', 1)) AS uid_key,
+      SPLIT_PART(viewer_id, ':', 2) AS uid_value
+    FROM
+      prod_buzzad.l_user_event
+    WHERE
+      partition_timestamp >= TIMESTAMP'{start_time}' AND
+      partition_timestamp < TIMESTAMP'{end_time}'
+    );
+  output_bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  output_prefix: "segmentsvc/gold/event/year={year}/month={month}/day={day}/hour={hour}/ba_user_event"
+  file_key: ba_user_event
+  file_extension: parquet
+
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      `data_source_id` BIGINT,
+      `event_type` STRING,
+      `event_timestamp` TIMESTAMP,
+      `payload` MAP<STRING,STRING>,
+      `uid_key` STRING,
+      `uid_value` STRING
+    )
+    PARTITIONED BY (
+      partition_timestamp TIMESTAMP
+    )
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY")
+    ;
+  database: "{{ var.value.get('server_env', 'prod') }}_segmentsvc"
+  table: g_event_ba_user_event
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/segmentsvc/gold/event/"
+  partition:
+    name: partition_timestamp
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+    location: "s3://{{{{ var.value.get('server_env', 'prod') }}}}-buzzvil-data-lake/segmentsvc/gold/event/year={year}/month={month}/day={day}/hour={hour}"

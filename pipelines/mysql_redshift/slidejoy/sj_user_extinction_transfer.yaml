@@ -1,0 +1,49 @@
+---
+pipeline_key: sj_user_extinction_transfer
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: slidejoy_mysql
+  table_name: tbl_userExtinctionTransfer
+  fields:
+  - userId
+  - transferTime
+  - amount
+  - createDate
+  - updateDate
+  - reason
+  increment_key: transferTime
+  increment_key_type: timestamp
+  unique_key_list:
+  - user_id
+  - transferTime
+
+redshift:
+  table_name: sj_user_extinction_transfer
+  fields:
+  - user_id
+  - transfered_at
+  - amount
+  - created_at
+  - updated_at
+  - reason
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+        user_id          VARCHAR(128)   NOT NULL       ENCODE ZSTD,
+        transfered_at    TIMESTAMP      NOT NULL       ENCODE ZSTD,
+        amount           INT4           NOT NULL       ENCODE ZSTD,
+        created_at       TIMESTAMP      NOT NULL       ENCODE AZ64,
+        updated_at       TIMESTAMP      NOT NULL       ENCODE AZ64,
+        reason           VARCHAR(192)   DEFAULT NULL   ENCODE ZSTD,
+        UNIQUE(user_id, transfered_at)
+    )
+    DISTKEY (user_id)
+    SORTKEY (transfered_at)
+  increment_key: transfered_at
+  increment_key_type: timestamp
+  unique_key_list:
+  - user_id
+  - transfered_at

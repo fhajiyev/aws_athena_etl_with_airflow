@@ -1,0 +1,73 @@
+---
+pipeline_key: ba_impression
+pipeline_type: redshift_spectrum_add_partition
+pipeline_dag_configs:
+  start_date: 2019-01-01 00:00:00
+  schedule_interval: "@hourly"
+
+athena:
+  table_name: ba_impression
+  fields:
+    - viewer_id
+    - unit_id
+    - lineitem_id
+    - time
+    - sales
+    - year_of_birth
+    - sex
+    - ip
+    - carrier
+    - region
+    - platform
+    - country
+    - device_name
+    - publisher_user_id
+    - relationship
+    - ifa
+    - udid
+    - adid
+    - creative_id
+    - user_agent
+    - registered_days
+    - request_id
+  partition:
+    location: s3://prod-buzzvil-firehose/buzzad/impression
+    name: partition_timestamp
+    type: hourly
+
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE spectrum.ba_impression ( 
+        viewer_id          VARCHAR(64),
+        unit_id            INT8,
+        lineitem_id        INT8,
+        time               VARCHAR(64),
+        sales              FLOAT,
+        year_of_birth      INT4,
+        sex                VARCHAR(1),
+        ip                 INT8,
+        carrier            VARCHAR(64),
+        region             VARCHAR(64),
+        platform           VARCHAR(64),
+        country            VARCHAR(2),
+        device_name        VARCHAR(64),
+        publisher_user_id  VARCHAR(64),
+        relationship       VARCHAR(2),
+        ifa                VARCHAR(64),
+        udid               VARCHAR(64),
+        adid               VARCHAR(64),
+        creative_id        INT8,
+        user_agent         VARCHAR(64),
+        registered_days    INT4,
+        request_id         VARCHAR(64)
+
+    )
+    PARTITIONED BY ( 
+        partition_timestamp TIMESTAMP
+    )
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'ignore.malformed.json'='true'
+    )
+    LOCATION
+      's3://prod-buzzvil-firehose/buzzad/impression/';

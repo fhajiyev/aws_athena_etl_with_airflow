@@ -1,0 +1,629 @@
+# Note that
+# - interval '6 hours' is actually "interval - 21 (execution time) + 24 (day offset) - 9( utc conversion)"
+# + interval '3 hours' is actually "interval - 21 (execution time) + 24 (day offset)"
+---
+pipeline_key: bi_dau_financial
+pipeline_type: redshift_transform_load
+pipeline_dag_configs:
+  start_date: 2019-01-01 21:00:00
+  schedule_interval: "0 21 * * *"
+transform:
+  delete_query: |
+    DELETE
+    FROM
+      bi_dau_financial
+    WHERE
+      date_at >= TIMESTAMP'{start_time}' + interval '3 HOURS' AND
+      date_at < TIMESTAMP'{end_time}' + interval '3 HOURS'
+  select_query: |
+    WITH
+    agg_imp_clk_conv AS (
+        SELECT
+            created_at,
+            ifa,
+            lineitem_id,
+            unit_id,
+            1 AS impression_count,
+            0 AS click_count,
+            0 AS conversion_count,
+            sales AS sales,
+            0 AS unit_sales,
+            0 AS lineitem_payout,
+            0 AS unit_payout,
+            0 AS reward,
+            country
+        FROM
+            ba_impression
+        UNION ALL
+        SELECT
+            created_at,
+            ifa,
+            lineitem_id,
+            unit_id,
+            0 AS impression_count,
+            1 AS click_count,
+            0 AS conversion_count,
+            sales AS sales,
+            0 AS unit_sales,
+            0 AS lineitem_payout,
+            0 AS unit_payout,
+            0 AS reward,
+            country
+        FROM
+            ba_click
+        UNION ALL
+        SELECT
+            created_at,
+            SUBSTRING(viewer_id, 5,36) as ifa,
+            lineitem_id,
+            unit_id,
+            0 AS impression_count,
+            0 AS click_count,
+            1 AS conversion_count,
+            sales AS sales,
+            unit_sales AS unit_sales,
+            payout AS lineitem_payout,
+            unit_payout AS unit_payout,
+            reward AS reward,
+            country
+        FROM
+            ba_conversion
+    )
+    , statistics_ifa_unit AS (
+        SELECT
+            DATE_TRUNC('day', CONVERT_TIMEZONE('Asia/Seoul', s.created_at)) AS date_at,
+            s.ifa,
+            s.unit_id,
+            l.adnetwork_id AS adnetwork_id,
+            l.revenue_type AS lineitem_revenue_type,
+            l.organization_id AS lineitem_organization_id,
+            u.organization_id AS unit_organization_id,
+            u.name AS unit_name,
+            u.unit_type AS unit_type,
+            SUM(s.impression_count) AS impression_count,
+            SUM(s.click_count) AS click_count,
+            SUM(conversion_count) AS conversion_count,
+            SUM(sales) AS sales_total,
+            SUM(unit_sales) AS unit_sales_total,
+            SUM(reward) AS reward_total
+        FROM
+            agg_imp_clk_conv s
+            INNER JOIN ba_lineitem l ON
+                s.lineitem_id = l.id
+            INNER JOIN ba_unit u ON
+                u.id = s.unit_id
+        WHERE
+            s.created_at >= CONVERT_TIMEZONE('Asia/Seoul', 'UTC', TIMESTAMP'{start_time}') - INTERVAL '21 HOUR' + INTERVAL '1 DAY' AND
+            s.created_at < CONVERT_TIMEZONE('Asia/Seoul', 'UTC', TIMESTAMP'{end_time}') - INTERVAL '21 HOUR' + INTERVAL '1 DAY'
+        GROUP BY
+            1,2,3,4,5,6,7,8,9
+    )
+    , stat_list AS (
+        SELECT
+            s.date_at,
+            s.ifa,
+            s.unit_id,
+            CASE
+                -- classify special UNITS first
+                WHEN (UPPER(unit_name) LIKE '%HONEY%' OR
+                      UPPER(unit_name) LIKE '%SLIDEJOY%' OR
+                      UPPER(unit_name) LIKE '%슬라이드조이%' OR
+                      UPPER(unit_name) LIKE '%허니스크린%')                           THEN 'BUZZVIL'
+                WHEN unit_organization_id = 148                                          THEN 'OCB'
+                WHEN unit_id = 814929650214424                                           THEN 'TMONEY'
+                WHEN unit_id = 546150121635997                                           THEN 'MPOST'
+                WHEN unit_id = 320712326152886                                           THEN 'CULTURE'
+                WHEN unit_id = 533601017475164                                           THEN 'PONTA'
+                WHEN unit_id IN (508293270306870, 291112716543436)                       THEN 'HPOINT'
+                WHEN unit_id = 174726795999554                                           THEN 'WHOWHO'
+                WHEN unit_id = 522465308829269                                           THEN 'ELEVENST'
+                WHEN unit_id IN (289984773704012, 424728994992820, 530981119832366)      THEN 'UPLUS'
+                WHEN unit_id = 186943880486296                                           THEN 'HAPPYSCRN'
+                -- classify normal UNITS
+                -- WHEN unit_type = 'B'                                             THEN 'BANNER'       -- NO DATA
+                -- WHEN unit_type = 'U'                                             THEN 'UNKNOWN'      -- NO DATA
+                -- WHEN unit_type = 'F'                                             THEN 'INTERSTITIAL' -- NO REV/COST
+                WHEN unit_type = 'D'                                                THEN 'DISPLAYAPI'
+                WHEN unit_type = 'N'                                                THEN 'BARO'
+                WHEN unit_type LIKE 'BB%'                                           THEN 'BAB'
+                WHEN unit_type IN ('O', 'I')                                        THEN 'BO'
+                ELSE                                                                       'BS'           -- lockscreen + exceptions + new_types
+            END AS account_type,
+            SUM(CASE WHEN lineitem_organization_id  = 1 AND lineitem_revenue_type     IN ('cpc', 'cpm') THEN NVL(s.sales_total,      0) ELSE 0 END)::DECIMAL(27,9) AS display_revenue,
+            SUM(CASE WHEN lineitem_organization_id != 1 AND lineitem_revenue_type     IN ('cpc', 'cpm') THEN NVL(s.sales_total,      0) ELSE 0 END)::DECIMAL(27,9) AS media_display_revenue,
+            SUM(CASE WHEN lineitem_organization_id != 1 AND lineitem_revenue_type NOT IN ('cpc', 'cpm') THEN NVL(s.unit_sales_total, 0) ELSE 0 END)::DECIMAL(27,9) AS media_action_revenue,
+            SUM(CASE WHEN lineitem_organization_id  = 1 AND lineitem_revenue_type NOT IN ('cpc', 'cpm') THEN NVL(s.sales_total,      0) ELSE 0 END)::DECIMAL(27,9) AS action_revenue,
+            SUM(CASE WHEN lineitem_organization_id  = 1 AND lineitem_revenue_type NOT IN ('cpc', 'cpm') THEN NVL(s.unit_sales_total, 0) ELSE 0 END)::DECIMAL(27,9) AS action_unit_revenue,
+            0                                                                                                                         AS display_cost,
+            SUM(CASE WHEN lineitem_organization_id  = 1 AND (adnetwork_id NOT IN (600) or adnetwork_id IS NULL) THEN NVL(s.reward_total, 0) ELSE 0 END)::DECIMAL(27,9) AS action_cost,
+            0                                                                                                                         AS base_reward_cost
+        FROM
+            statistics_ifa_unit s
+        GROUP BY
+            1, 2, 3, 4
+
+        UNION ALL
+
+        SELECT
+            DATE_TRUNC('day', CONVERT_TIMEZONE('Asia/Seoul', p.date_at)) AS date_at,
+            p.ifa,
+            p.unit_id,
+            p.account_type,
+            0.0                                           AS display_revenue,
+            0.0                                           AS media_display_revenue,
+            0.0                                           AS media_action_revenue,
+            0.0                                           AS action_revenue,
+            0.0                                           AS action_unit_revenue,
+            SUM(display_cost)::DECIMAL(27,9)                           AS display_cost,
+            0.0                                           AS action_cost,
+            SUM(base_reward_cost)::DECIMAL(27,9)                       AS base_reward_cost
+        FROM
+            bs_statistics_user_point p
+        WHERE
+            p.date_at >= CONVERT_TIMEZONE('Asia/Seoul', 'UTC', TIMESTAMP'{start_time}') - INTERVAL '21 HOUR' + INTERVAL '1 DAY' AND
+            p.date_at < CONVERT_TIMEZONE('Asia/Seoul', 'UTC', TIMESTAMP'{end_time}') - INTERVAL '21 HOUR' + INTERVAL '1 DAY'
+        GROUP BY
+            1, 2, 3, 4
+    ),
+    stat_sum AS (
+        SELECT
+            s.date_at,
+            s.ifa,
+            s.unit_id,
+            s.account_type,
+            SUM(NVL(s.display_revenue, 0)) AS display_revenue,
+            SUM(NVL(s.action_revenue, 0)) AS action_revenue,
+            SUM(NVL(s.action_unit_revenue, 0)) AS action_unit_revenue,
+            SUM(NVL(s.media_display_revenue, 0)) AS media_display_revenue,
+            SUM(NVL(s.media_action_revenue, 0)) AS media_action_revenue,
+
+            SUM(NVL(s.display_cost, 0)) AS display_cost,
+            SUM(NVL(s.action_cost, 0)) AS action_cost,
+            SUM(NVL(s.base_reward_cost, 0 )) AS base_reward_cost
+        FROM
+            stat_list s
+        GROUP BY
+            1, 2, 3, 4
+    )
+    -- contract
+    , lastpayoutba as (
+        select
+            unit_id,
+            billing_contract_id as ba_billing_contract_id,
+            row_number() over (partition by unit_id order by created_at desc) as ba_nums
+        from
+            ba_billing_payout
+        where
+            created_at >= current_date - interval '1 months'
+    ),
+    lastpayoutbs AS (
+        SELECT
+            unit_id,
+            billing_contract_id as bs_billing_contract_id,
+            row_number() over (partition by unit_id order by created_at desc) as bs_nums
+        FROM
+            bs_billing_payout
+        WHERE
+            created_at >= current_date - interval '1 months'
+    ),
+    unit_contract_ba AS (
+        SELECT
+            l.unit_id,
+            c.action_cost_reimbursement_rate,
+            c.action_revenue_share_rate,
+            c.exchange_rate,
+            c.agency_fee,
+            c.display_cost_reimbursement_rate,
+            c.display_revenue_share_rate,
+            c.display_adnetwork_revenue_share_rate,
+            c.cost_reimbursement_rate
+        FROM
+            lastpayoutba AS l
+        INNER JOIN
+            ba_billing_contract AS c
+                ON l.ba_billing_contract_id = c.id
+        WHERE
+            l.ba_nums = 1
+    ),
+    unit_contract_bs AS (
+        SELECT
+            l.unit_id,
+            c.action_cost_reimbursement_rate, --라인아이템별로 원래 퍼블리셔가 줘야할 부분을 버즈빌이 내주는 부분
+            c.action_revenue_share_rate,
+            c.exchange_rate,
+            c.agency_fee,
+            c.display_cost_reimbursement_rate, --라인아이템별로 원래 퍼블리셔가 줘야할 부분을 버즈빌이 내주는 부분
+            c.display_revenue_share_rate,
+            c.display_adnetwork_revenue_share_rate,
+            c.cost_reimbursement_rate
+        FROM
+            lastpayoutbs AS l
+        INNER JOIN
+            bs_billing_contract AS c
+                ON l.bs_billing_contract_id = c.id
+        WHERE
+            l.bs_nums = 1
+    ),
+    final AS (
+        SELECT
+            s.date_at,
+            s.ifa,
+            s.unit_id,
+            s.account_type,
+
+            s.display_revenue,
+            s.action_revenue,
+            s.display_cost,
+            s.action_cost,
+            s.base_reward_cost,
+
+            0 AS display_revenue_payout,
+            0 AS action_revenue_payout,
+
+            s.display_cost           AS display_cost_payout,
+            s.action_cost            AS action_cost_payout
+        FROM
+            stat_sum s
+        INNER JOIN
+            unit_contract_ba t ON t.unit_id = s.unit_id AND s.account_type = 'BUZZVIL'
+    UNION ALL
+        SELECT
+            s.date_at,
+            s.ifa,
+            s.unit_id,
+            s.account_type,
+
+            s.display_revenue,
+            s.action_revenue,
+            s.display_cost,
+            s.action_cost,
+            s.base_reward_cost,
+
+            s.display_revenue * (1 - t.agency_fee) * 0.5                                           AS display_revenue_payout,
+            s.action_unit_revenue * 0.5                                                            AS action_revenue_payout,
+
+            s.display_cost * 0.5     AS display_cost_payout,
+            s.action_cost * 0.5      AS action_cost_payout
+        FROM
+            stat_sum s
+        INNER JOIN
+            unit_contract_ba t ON t.unit_id = s.unit_id AND s.account_type = 'OCB'
+    UNION ALL
+        SELECT
+            s.date_at,
+            s.ifa,
+            s.unit_id,
+            s.account_type,
+
+            s.display_revenue,
+            s.action_revenue,
+            s.display_cost,
+            s.action_cost,
+            s.base_reward_cost,
+
+            s.display_revenue * (1 - t.agency_fee) * 0.7                                           AS display_revenue_payout,
+            s.action_unit_revenue * t.action_revenue_share_rate                                    AS action_revenue_payout,
+
+            0 AS display_cost_payout,
+            0 AS action_cost_payout
+        FROM
+            stat_sum s
+        INNER JOIN
+            unit_contract_bs t ON t.unit_id = s.unit_id AND s.account_type = 'TMONEY'
+    UNION ALL
+        SELECT
+            s.date_at,
+            s.ifa,
+            s.unit_id,
+            s.account_type,
+
+            s.display_revenue,
+            s.action_revenue,
+            s.display_cost,
+            s.action_cost,
+            s.base_reward_cost,
+
+            s.display_revenue * (1 - t.agency_fee) * t.display_revenue_share_rate                  AS display_revenue_payout,
+            s.action_unit_revenue * t.action_revenue_share_rate                                    AS action_revenue_payout,
+
+
+            (s.display_cost + s.base_reward_cost) * -0.7 AS display_cost_payout,
+            s.action_cost * -0.7                         AS action_cost_payout
+        FROM
+            stat_sum s
+        INNER JOIN
+            unit_contract_bs t ON t.unit_id = s.unit_id AND s.account_type = 'MPOST'
+    UNION ALL
+        SELECT
+            s.date_at,
+            s.ifa,
+            s.unit_id,
+            s.account_type,
+
+            s.display_revenue,
+            s.action_revenue,
+
+            s.display_cost,
+            s.action_cost,
+            s.base_reward_cost,
+
+            s.display_revenue * (1 - t.agency_fee) * t.display_revenue_share_rate                  AS display_revenue_payout,
+            s.action_unit_revenue * t.action_revenue_share_rate                                    AS action_revenue_payout,
+
+
+            (s.display_cost + s.base_reward_cost) * t.display_cost_reimbursement_rate AS display_cost_payout,
+            s.action_cost * t.action_cost_reimbursement_rate                          AS action_cost_payout
+        FROM
+            stat_sum s
+        INNER JOIN
+            unit_contract_bs t ON t.unit_id = s.unit_id AND s.account_type = 'CULTURE'
+    UNION ALL
+        SELECT
+            s.date_at,
+            s.ifa,
+            s.unit_id,
+            s.account_type,
+
+            s.display_revenue,
+            s.action_revenue,
+
+            s.display_cost,
+            s.action_cost,
+            s.base_reward_cost,
+
+            s.display_revenue * t.display_revenue_share_rate                                       AS display_revenue_payout,
+            s.action_unit_revenue * t.action_revenue_share_rate                                    AS action_revenue_payout,
+
+
+            s.display_cost * (-1) * t.display_revenue_share_rate AS display_cost_payout,
+            s.action_cost * (-1) * t.action_revenue_share_rate   AS action_cost_payout
+        FROM
+            stat_sum s
+        INNER JOIN
+            unit_contract_bs t ON t.unit_id = s.unit_id AND s.account_type = 'PONTA'
+    UNION ALL
+        SELECT
+            s.date_at,
+            s.ifa,
+            s.unit_id,
+            s.account_type,
+
+            s.display_revenue,
+            s.action_revenue,
+            s.display_cost,
+            s.action_cost,
+            s.base_reward_cost,
+
+            s.display_revenue * (1 - t.agency_fee) * t.display_revenue_share_rate                  AS display_revenue_payout,
+            s.action_unit_revenue * t.action_revenue_share_rate                                    AS action_revenue_payout,
+
+            (s.display_cost + s.base_reward_cost) * (-1) AS display_cost_payout,
+            s.action_cost * (-1)                         AS action_cost_payout
+        FROM
+            stat_sum s
+        INNER JOIN
+            unit_contract_bs t ON t.unit_id = s.unit_id AND s.account_type = 'HPOINT'
+    UNION ALL
+        SELECT
+            s.date_at,
+            s.ifa,
+            s.unit_id,
+            s.account_type,
+
+            s.display_revenue,
+            s.action_revenue,
+            s.display_cost,
+            s.action_cost,
+            s.base_reward_cost,
+
+            s.display_revenue * (1 - t.agency_fee) * t.display_revenue_share_rate                  AS display_revenue_payout,
+            s.action_unit_revenue * t.action_revenue_share_rate                                    AS action_revenue_payout,
+
+            (s.display_cost + s.base_reward_cost) * (t.display_cost_reimbursement_rate - 0.8) AS display_cost_payout,
+            s.action_cost * (t.action_cost_reimbursement_rate - 0.8)                          AS action_cost_payout
+        FROM
+            stat_sum s
+        INNER JOIN
+            unit_contract_bs t ON t.unit_id = s.unit_id AND s.account_type = 'WHOWHO'
+    UNION ALL
+        SELECT
+            s.date_at,
+            s.ifa,
+            s.unit_id,
+            s.account_type,
+
+            s.display_revenue,
+            s.action_revenue,
+            s.display_cost,
+            s.action_cost,
+            s.base_reward_cost,
+
+            s.display_revenue * (1 - t.agency_fee) * t.display_revenue_share_rate * 0.5            AS display_revenue_payout,
+            s.action_unit_revenue * t.action_revenue_share_rate                                    AS action_revenue_payout,
+
+            (s.display_cost + s.base_reward_cost) * t.display_cost_reimbursement_rate + s.display_cost * 0.5 AS display_cost_payout,
+            s.action_cost * t.action_cost_reimbursement_rate                                                 AS action_cost_payout
+        FROM
+            stat_sum s
+        INNER JOIN
+            unit_contract_bs t ON t.unit_id = s.unit_id AND s.account_type = 'ELEVENST'
+    UNION ALL
+        SELECT
+            s.date_at,
+            s.ifa,
+            s.unit_id,
+            s.account_type,
+
+            s.display_revenue,
+            s.action_revenue,
+            s.display_cost,
+            s.action_cost,
+            s.base_reward_cost,
+
+            s.display_revenue * (1 - t.agency_fee) * t.display_revenue_share_rate
+            - s.media_display_revenue * (1 - 0.3) * 0.1                                            AS display_revenue_payout,
+            s.action_unit_revenue * t.action_revenue_share_rate
+            - s.media_action_revenue * (1 - 0.3) * 0.1                                             AS action_revenue_payout,
+
+
+            (s.display_cost + s.base_reward_cost) * t.display_cost_reimbursement_rate AS display_cost_payout,
+            s.action_cost * t.action_cost_reimbursement_rate                          AS action_cost_payout
+        FROM
+            stat_sum s
+        INNER JOIN
+            unit_contract_bs t ON t.unit_id = s.unit_id AND s.account_type = 'UPLUS'
+    UNION ALL
+        SELECT
+            s.date_at,
+            s.ifa,
+            s.unit_id,
+            s.account_type,
+
+            s.display_revenue,
+            s.action_revenue,
+            s.display_cost,
+            s.action_cost,
+            s.base_reward_cost,
+
+            s.display_revenue * (1 - t.agency_fee) * t.display_revenue_share_rate
+            - s.media_display_revenue * 0.1                                                        AS display_revenue_payout,
+            s.action_unit_revenue * t.action_revenue_share_rate
+            - s.media_action_revenue * 0.1                                                         AS action_revenue_payout,
+
+            (s.display_cost + s.base_reward_cost) * t.display_cost_reimbursement_rate AS display_cost_payout,
+            s.action_cost * t.action_cost_reimbursement_rate                          AS action_cost_payout
+        FROM
+            stat_sum s
+        INNER JOIN
+            unit_contract_bs t ON t.unit_id = s.unit_id AND s.account_type = 'HAPPYSCRN'
+    UNION ALL
+        SELECT
+            s.date_at,
+            s.ifa,
+            s.unit_id,
+            s.account_type,
+
+            s.display_revenue,
+            s.action_revenue,
+            s.display_cost,
+            s.action_cost,
+            s.base_reward_cost,
+
+            s.display_revenue * (1 - t.agency_fee) * t.display_revenue_share_rate                  AS display_revenue_payout,
+            s.action_unit_revenue * t.action_revenue_share_rate                                    AS action_revenue_payout,
+
+            (s.display_cost + s.base_reward_cost) * t.display_cost_reimbursement_rate AS display_cost_payout,
+            s.action_cost * t.action_cost_reimbursement_rate                          AS action_cost_payout
+
+        FROM
+            stat_sum s
+        INNER JOIN
+            unit_contract_bs t ON t.unit_id = s.unit_id AND s.account_type = 'DISPLAYAPI'
+    UNION ALL
+        SELECT
+            s.date_at,
+            s.ifa,
+            s.unit_id,
+            s.account_type,
+
+            s.display_revenue,
+            s.action_revenue,
+            s.display_cost,
+            s.action_cost,
+            s.base_reward_cost,
+
+            s.display_revenue * (1 - t.agency_fee) * t.display_revenue_share_rate                  AS display_revenue_payout,
+            s.action_unit_revenue * t.action_revenue_share_rate                                    AS action_revenue_payout,
+
+
+            (s.display_cost + s.base_reward_cost) * t.display_cost_reimbursement_rate AS display_cost_payout,
+            s.action_cost * t.action_cost_reimbursement_rate                          AS action_cost_payout
+        FROM
+            stat_sum s
+        INNER JOIN
+            unit_contract_bs t ON t.unit_id = s.unit_id AND s.account_type IN ('BARO', 'BAB', 'BS')
+    UNION ALL
+        SELECT
+            s.date_at,
+            s.ifa,
+            s.unit_id,
+            s.account_type,
+
+            s.display_revenue,
+            s.action_revenue,
+            s.display_cost,
+            s.action_cost,
+            s.base_reward_cost,
+
+            0 AS display_revenue_payout,
+            s.action_unit_revenue * t.action_revenue_share_rate AS action_revenue_payout,
+
+            0 AS display_cost_payout,
+            s.action_cost * t.action_cost_reimbursement_rate AS action_cost_payout
+        FROM
+            stat_sum s
+        INNER JOIN
+            unit_contract_ba t ON t.unit_id = s.unit_id AND s.account_type = 'BO'
+    )
+    SELECT
+        f.date_at,
+        f.ifa,
+        f.unit_id,
+        f.account_type,
+        SUM(f.display_revenue) AS display_revenue,
+        SUM(f.action_revenue)  AS action_revenue,
+        SUM(f.display_cost) AS display_cost,
+        SUM(f.action_cost) AS action_cost,
+        SUM(f.base_reward_cost) AS base_reward_cost,
+        SUM(f.display_revenue_payout) AS display_revenue_payout,
+        SUM(f.action_revenue_payout) AS action_revenue_payout,
+        SUM(f.display_cost_payout) AS display_cost_payout,
+        SUM(f.action_cost_payout) AS action_cost_payout
+    FROM
+        final f
+    GROUP BY
+        1, 2, 3, 4
+
+redshift:
+  table_name: bi_dau_financial
+  fields:
+  - date_at
+  - ifa
+  - unit_id
+  - account_type
+  - display_revenue
+  - action_revenue
+  - display_cost
+  - action_cost
+  - base_reward_cost
+  - display_revenue_payout
+  - action_revenue_payout
+  - display_cost_payout
+  - action_cost_payout
+  unique_key_list:
+  - ifa
+  - unit_id
+  - date_at
+  increment_key: date_at
+  increment_key_type: timestamp
+  copy_method: incremental
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      date_at                  TIMESTAMP       NOT NULL          ENCODE ZSTD,
+      ifa                      VARCHAR(45)     NOT NULL          ENCODE ZSTD,
+      unit_id                  INT8            NOT NULL          ENCODE ZSTD,
+      account_type             VARCHAR(64)     NOT NULL          ENCODE ZSTD,
+      display_revenue          DECIMAL(27,9)   DEFAULT NULL      ENCODE ZSTD,
+      action_revenue           DECIMAL(27,9)   DEFAULT NULL      ENCODE ZSTD,
+      display_cost             DECIMAL(27,9)   DEFAULT NULL      ENCODE ZSTD,
+      action_cost              DECIMAL(27,9)   DEFAULT NULL      ENCODE ZSTD,
+      base_reward_cost         DECIMAL(27,9)   DEFAULT NULL      ENCODE ZSTD,
+      display_revenue_payout   DECIMAL(27,9)   DEFAULT NULL      ENCODE ZSTD,
+      action_revenue_payout    DECIMAL(27,9)   DEFAULT NULL      ENCODE ZSTD,
+      display_cost_payout      DECIMAL(27,9)   DEFAULT NULL      ENCODE ZSTD,
+      action_cost_payout       DECIMAL(27,9)   DEFAULT NULL      ENCODE ZSTD
+    )
+    DISTKEY(ifa)
+    SORTKEY(date_at, ifa)
+    ;

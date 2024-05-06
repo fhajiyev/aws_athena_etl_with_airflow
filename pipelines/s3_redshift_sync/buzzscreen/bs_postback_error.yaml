@@ -1,0 +1,47 @@
+---
+pipeline_key: bs_postback_error
+pipeline_type: s3_redshift_sync
+pipeline_dag_configs:
+  start_date: 2019-04-15 00:00:00
+  schedule_interval: "@hourly"
+delay_seconds: 600
+
+s3:
+  bucket: buzzvil-log-oregon
+  prefix: prod/postbacksvc/error/postback
+redshift:
+  table_name: bs_postback_error
+  fields:
+  - "\"time\""
+  - error_type
+  - message
+  - unit_id
+  - transaction_id
+  - postback_url
+  - params
+  - status_code
+  unique_key_list:
+  - time
+  - transaction_id
+  deduplicate_key_list:
+  - time
+  - transaction_id
+  increment_key: time
+  increment_key_type: timestamp
+  copy_method: upsert
+  copy_option: default_json
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      time              TIMESTAMP NOT NULL ENCODE LZO,
+      error_type        VARCHAR(255) NOT NULL ENCODE ZSTD,
+      message           VARCHAR(1024) NOT NULL ENCODE ZSTD,
+      unit_id           INT8 NOT NULL REFERENCES bs_unit (id) ENCODE BYTEDICT,
+      transaction_id    VARCHAR(64) NOT NULL ENCODE ZSTD,
+      postback_url      VARCHAR(255) ENCODE ZSTD,
+      params            VARCHAR(1024) ENCODE ZSTD,
+      status_code       INT4 NULL ENCODE ZSTD
+    )
+    DISTKEY (transaction_id)
+    SORTKEY (time, unit_id)
+    ;

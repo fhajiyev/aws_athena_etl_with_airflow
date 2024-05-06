@@ -1,0 +1,31 @@
+---
+pipeline_key: segmentsvc_g_tag
+pipeline_type: athena_catalog
+pipeline_dag_configs:
+  start_date: 2020-11-21 00:00:00
+  schedule_interval: "0 * * * *"
+
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      `data_source_id` BIGINT,
+      `tag_timestamp` TIMESTAMP, 
+      `payload` MAP<STRING,STRING>,
+      `uid_key` STRING, 
+      `uid_value` STRING
+    )
+    PARTITIONED BY (
+      partition_timestamp TIMESTAMP
+    )
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES ("parquet.compress"="SNAPPY")
+    ;
+  database: "{{ var.value.get('server_env', 'prod') }}_segmentsvc"
+  table: g_tag
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/segmentsvc/gold/tag/"
+  partition:
+    name: partition_timestamp
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+    location: "s3://{{{{ var.value.get('server_env', 'prod') }}}}-buzzvil-data-lake/segmentsvc/gold/tag/year={year}/month={month}/day={day}/hour={hour}/"
+  

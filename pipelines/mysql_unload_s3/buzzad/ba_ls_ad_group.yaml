@@ -1,0 +1,83 @@
+# CREATE TABLE `ad_groups` (
+#   `id` int(11) NOT NULL AUTO_INCREMENT,
+#   `name` varchar(100) NOT NULL,
+#   `budget` decimal(19,9) NOT NULL,
+#   `currency` varchar(3) NOT NULL,
+#   `salesforce_record_id` varchar(200) NOT NULL,
+#   `organization_id` int(10) unsigned NOT NULL,
+#   `owner_id` int(10) unsigned NOT NULL,
+#   `created_at` datetime(6) NOT NULL,
+#   `updated_at` datetime(6) NOT NULL,
+#   `hide_impression` tinyint(1) NOT NULL,
+#   `agent_fee_rate` decimal(10,3),
+#   `sales_manager_id` int(10) unsigned,
+#   `hide_multi_creative_report` tinyint(1) NOT NULL,
+#   `hide_lineitem_report` tinyint(1) NOT NULL,
+#   `ad_group_type` varchar(30) NOT NULL,
+#   `memo` varchar(1000),
+#   PRIMARY KEY (`id`)
+# ) ENGINE=InnoDB AUTO_INCREMENT=13232 DEFAULT CHARSET=utf8;
+---
+pipeline_key: ba_ls_ad_group
+pipeline_type: mysql_unload_s3
+pipeline_dag_configs:
+  start_date: 2020-09-01 17:00:00
+  schedule_interval: "0 17 * * *"
+mysql:
+  conn_id: buzzad_mysql
+  table_name: ad_groups
+  increment_key: id
+  increment_key_type: dump
+  fields:
+  - id
+  - name
+  - budget
+  - currency
+  - salesforce_record_id
+  - organization_id
+  - owner_id
+  - created_at
+  - updated_at
+  - hide_impression
+  - agent_fee_rate
+  - sales_manager_id
+  - hide_multi_creative_report
+  - hide_lineitem_report
+  - ad_group_type
+  - memo
+s3:
+  bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  prefix: buzzad/landing_snapshot/ad_group/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzad_ad_group
+  data_format: parquet
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id                           BIGINT,
+      name                         VARCHAR(255),
+      budget                       DECIMAL(27,9),
+      currency                     VARCHAR(64),
+      salesforce_record_id         VARCHAR(1024),
+      organization_id              BIGINT,
+      owner_id                     BIGINT,
+      created_at                   TIMESTAMP,
+      updated_at                   TIMESTAMP,
+      hide_impression              SMALLINT,
+      agent_fee_rate               DECIMAL(27,9),
+      sales_manager_id             BIGINT,
+      hide_multi_creative_report   SMALLINT,
+      hide_lineitem_report         SMALLINT,
+      ad_group_type                VARCHAR(255),
+      memo                         STRING
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY");
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzad"
+  table: ls_ad_group
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/buzzad/landing_snapshot/ad_group"
+  partition:
+    key: partition_timestamp
+    value: "{{execution_date.strftime('%Y-%m-%d %H:00:00')}}"
+    subdir: "year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}"

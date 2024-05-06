@@ -1,0 +1,177 @@
+---
+pipeline_key: billingsvc_payout_vw_create_view
+pipeline_type: redshift_query
+pipeline_dag_configs:
+  start_date: 2020-10-17 00:00:00
+redshift:
+  query: |
+    BEGIN;
+    DROP VIEW IF EXISTS billingsvc_payout_vw;
+    CREATE VIEW billingsvc_payout_vw AS
+
+    SELECT
+        p.unit_id,
+        p.month_at,
+        p.buzzvil_payout + COALESCE(a.buzzvil_payout, 0::DECIMAL(27,9)) AS buzzvil_payout,
+        p.publisher_payout + COALESCE(a.publisher_payout, 0::DECIMAL(27,9)) AS publisher_payout,
+        p.display_revenue,
+        p.action_revenue,
+        p.service_revenue,
+        p.display_adnetwork_revenue,
+        p.fan_adnetwork_revenue,
+        p.admob_adnetwork_revenue,
+        p.exchange_rate,
+        0 AS base_reward_cost,
+        p.display_cost,
+        p.action_cost,
+        p.reimbursement_cost,
+        p.status,
+        p.is_publish,
+        p.billing_contract_id::VARCHAR,
+        a.note::VARCHAR AS memo,
+        'ba_billing_payout' AS data_source
+    FROM public.ba_billing_payout p
+    LEFT JOIN
+    (
+        SELECT
+            a.billing_payout_id,
+            SUM(a.buzzvil_payout) AS buzzvil_payout,
+            SUM(a.publisher_payout) AS publisher_payout,
+            MAX(r.note::VARCHAR) AS note
+        FROM
+            public.ba_billing_payout_adjustment a
+            LEFT JOIN
+            (
+                    SELECT
+                        id,
+                        buzzvil_payout,
+                        publisher_payout,
+                        note,
+                        user_id,
+                        created_at,
+                        updated_at,
+                        billing_payout_id,
+                        ROW_NUMBER() OVER(PARTITION BY ba_billing_payout_adjustment.billing_payout_id ORDER BY ba_billing_payout_adjustment.id DESC) AS rank
+                FROM public.ba_billing_payout_adjustment
+            ) r ON r.billing_payout_id = a.billing_payout_id
+        WHERE r.rank = 1
+        GROUP BY a.billing_payout_id
+    ) a ON a.billing_payout_id = p.id
+    WHERE
+        p.month_at < '2020-10-01 00:00:00' AND
+        p.unit_id IN ( SELECT id FROM public.ba_unit WHERE unit_type in ('I', 'D', 'O') )
+
+    UNION ALL
+
+    SELECT
+        p.unit_id,
+        p.month_at,
+        p.buzzvil_payout + COALESCE(a.buzzvil_payout, 0::DECIMAL(27,9)) AS buzzvil_payout,
+        p.publisher_payout + COALESCE(a.publisher_payout, 0::DECIMAL(27,9)) AS publisher_payout,
+        p.display_revenue,
+        p.action_revenue,
+        p.service_revenue,
+        p.display_adnetwork_revenue,
+        p.fan_adnetwork_revenue,
+        p.admob_adnetwork_revenue,
+        p.exchange_rate,
+        p.base_reward_cost,
+        p.display_cost,
+        p.action_cost,
+        p.reimbursement_cost,
+        p.status,
+        p.is_publish,
+        p.billing_contract_id::VARCHAR,
+        COALESCE(p.memo, a.note::VARCHAR) AS memo,
+        'bs_billing_payout' AS data_source
+    FROM public.bs_billing_payout p
+    LEFT JOIN
+    (
+        SELECT
+            a.billing_payout_id,
+            SUM(a.buzzvil_payout) AS buzzvil_payout,
+            SUM(a.publisher_payout) AS publisher_payout,
+            MAX(r.note::VARCHAR) AS note
+        FROM
+            public.bs_billing_payout_adjustment a
+            LEFT JOIN
+            (
+                    SELECT
+                        id,
+                        buzzvil_payout,
+                        publisher_payout,
+                        note,
+                        user_id,
+                        created_at,
+                        updated_at,
+                        billing_payout_id,
+                        ROW_NUMBER() OVER(PARTITION BY bs_billing_payout_adjustment.billing_payout_id ORDER BY bs_billing_payout_adjustment.id DESC) AS rank
+                FROM public.bs_billing_payout_adjustment
+            ) r ON r.billing_payout_id = a.billing_payout_id
+        WHERE r.rank = 1
+        GROUP BY a.billing_payout_id
+    ) a ON a.billing_payout_id = p.id
+    WHERE
+        p.month_at < '2020-10-01 00:00:00' AND
+        p.unit_id IN ( SELECT id FROM public.ba_unit WHERE unit_type not in ('I', 'D', 'O') )
+
+    UNION ALL
+
+    SELECT
+        p.unit_id,
+        p.local_date AS month_at,
+        p.payout_buzzvil + COALESCE(a.payout_buzzvil, 0::DECIMAL(27,9)) AS buzzvil_payout,
+        p.payout_owner + COALESCE(a.payout_owner, 0::DECIMAL(27,9)) AS publisher_payout,
+        f.revenue_display_direct + f.revenue_display_external AS display_revenue,
+        f.revenue_action_direct + f.revenue_action_external AS action_revenue,
+        0 AS service_revenue,
+        f.revenue_adnetwork_dynamic AS display_adnetwork_revenue,
+        0 AS fan_adnetwork_revenue,
+        0 AS admob_adnetwork_revenue,
+        c.exchange_rate,
+        f.cost_base AS base_reward_cost,
+        f.cost_imp_direct + f.cost_imp_external AS display_cost,
+        f.cost_action_direct + f.cost_action_external + f.cost_adnetwork_static AS action_cost,
+        0 AS reimbursement_cost,
+        p.status,
+        p."access" AS is_publish,
+        p.unit_contract_uuid AS billing_contract_id,
+        a.reason::VARCHAR AS memo,
+        'billingsvc_payout' AS data_source
+    FROM
+        public.billingsvc_payout p
+        INNER JOIN public.billingsvc_unit_finance f
+            ON f.id = p.unit_finance_id
+        INNER JOIN public.billingsvc_unit_contracts c
+            ON c.uuid::text = p.unit_contract_uuid::text
+        LEFT JOIN
+        (
+            SELECT
+                a.payout_id,
+                SUM(a.payout_buzzvil) AS payout_buzzvil,
+                SUM(a.payout_owner) AS payout_owner,
+                MAX(r.reason::VARCHAR) AS reason
+            FROM
+                public.billingsvc_adjustments a
+        LEFT JOIN
+        (
+                SELECT
+                    billingsvc_adjustments.id,
+                    billingsvc_adjustments.payout_buzzvil,
+                    billingsvc_adjustments.payout_owner,
+                    billingsvc_adjustments.reason,
+                    billingsvc_adjustments.user_id,
+                    billingsvc_adjustments.updated_at,
+                    billingsvc_adjustments.created_at,
+                    billingsvc_adjustments.payout_id,
+                    ROW_NUMBER() OVER (PARTITION BY payout_id ORDER BY id DESC) AS rank
+                FROM public.billingsvc_adjustments
+            ) r ON r.payout_id = a.payout_id
+            WHERE r.rank = 1
+            GROUP BY a.payout_id
+        ) a ON a.payout_id = p.id
+    WHERE
+        p.local_date >= '2020-10-01 00:00:00'
+
+    WITH NO SCHEMA BINDING;
+    END;

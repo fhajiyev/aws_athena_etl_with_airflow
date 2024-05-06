@@ -1,0 +1,150 @@
+# Note that
+#
+---
+pipeline_key: m1_d_unit_country__finance_metric
+pipeline_type: redshift_transform_load
+pipeline_dag_configs:
+  start_date: 2019-12-31 16:00:00
+  schedule_interval: "0 16 * * *"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency
+    - trigger: sla_miss
+      args:
+        channel: data-emergency
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: check_data_redshift_statssvc_unit_finance_existence
+    timedelta_hours: 0
+
+transform:
+  select_query: |
+    WITH
+    units AS (
+        SELECT
+            id,
+            name,
+            unit_type
+        FROM
+            ba_unit u
+    )
+    SELECT
+        DATE_TRUNC('day', data_at + interval '9 hours')  AS kst_at,
+        s.country                                        AS country,
+        u.unit_type                                      AS unit_type,
+        s.unit_id                                        AS unit_id,
+        u.name                                           AS unit_name,
+        SUM(s.revenue_display_direct)                    AS revenue_display_direct,
+        SUM(s.revenue_display_owner)                     AS revenue_display_owner,
+        SUM(s.revenue_display_external)                  AS revenue_display_external,
+        SUM(s.revenue_action_direct)                     AS revenue_action_direct,
+        SUM(s.revenue_action_owner)                      AS revenue_action_owner,
+        SUM(s.revenue_action_external)                   AS revenue_action_external,
+        SUM(s.revenue_adnetwork_static)                  AS revenue_adnetwork_static,
+        SUM(s.revenue_adnetwork_dynamic)                 AS revenue_adnetwork_dynamic,
+        SUM(s.cost_action_direct)                        AS cost_action_direct,
+        SUM(s.cost_action_owner)                         AS cost_action_owner,
+        SUM(s.cost_action_external)                      AS cost_action_external,
+        SUM(s.cost_adnetwork_static)                     AS cost_adnetwork_static,
+        SUM(s.cost_adnetwork_dynamic)                    AS cost_adnetwork_dynamic,
+        SUM(s.cost_imp_direct)                           AS cost_imp_direct,
+        SUM(s.cost_imp_owner)                            AS cost_imp_owner,
+        SUM(s.cost_base)                                 AS cost_base,
+        SUM(s.cost_wel)                                  AS cost_wel,
+        SUM(s.cost_bch)                                  AS cost_bch,
+        SUM(s.cost_ref)                                  AS cost_ref,
+        SUM(s.cost_imp_external)                         AS cost_imp_external,
+        SUM(s.revenue_gross)                             AS revenue_gross
+    FROM
+        statssvc_unit_finance s
+        INNER JOIN units u ON s.unit_id = u.id
+    WHERE
+        s.data_at >= TIMESTAMP'{start_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS' AND
+        s.data_at < TIMESTAMP'{end_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS'
+    GROUP BY
+        1, 2, 3, 4, 5
+
+  delete_query : |
+    DELETE
+    FROM
+      datavil.m1_d_unit_country__finance_metric
+    WHERE
+      kst_at >= TIMESTAMP'{start_time}' - interval '16 hours' + INTERVAL '24 HOURS' AND
+      kst_at < TIMESTAMP'{end_time}' - interval '16 hours' + INTERVAL '24 HOURS'
+
+redshift:
+  conn_id: redshift_de 
+  table_name: datavil.m1_d_unit_country__finance_metric
+  fields:
+  - kst_at
+  - country
+  - unit_type
+  - unit_id
+  - unit_name
+  - revenue_display_direct
+  - revenue_display_owner
+  - revenue_display_external
+  - revenue_action_direct
+  - revenue_action_owner
+  - revenue_action_external
+  - revenue_adnetwork_static
+  - revenue_adnetwork_dynamic
+  - cost_action_direct
+  - cost_action_owner
+  - cost_action_external
+  - cost_adnetwork_static
+  - cost_adnetwork_dynamic
+  - cost_imp_direct
+  - cost_imp_owner
+  - cost_base
+  - cost_wel
+  - cost_bch
+  - cost_ref
+  - cost_imp_external
+  - revenue_gross
+  unique_key_list:
+  - kst_at
+  - unit_id
+  increment_key: kst_at
+  increment_key_type: timestamp
+  copy_method: incremental
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      kst_at                      TIMESTAMP          ENCODE AZ64,
+      country                     VARCHAR(2)         ENCODE ZSTD,
+      unit_type                   VARCHAR(64)        ENCODE ZSTD,
+      unit_id                     BIGINT             ENCODE AZ64,
+      unit_name                   VARCHAR(1024)      ENCODE ZSTD,
+      revenue_display_direct      BIGINT             ENCODE AZ64,
+      revenue_display_owner       BIGINT             ENCODE AZ64,
+      revenue_display_external    BIGINT             ENCODE AZ64,
+      revenue_action_direct       BIGINT             ENCODE AZ64,
+      revenue_action_owner        BIGINT             ENCODE AZ64,
+      revenue_action_external     BIGINT             ENCODE AZ64,
+      revenue_adnetwork_static    BIGINT             ENCODE AZ64,
+      revenue_adnetwork_dynamic   BIGINT             ENCODE AZ64,
+      cost_action_direct          BIGINT             ENCODE AZ64,
+      cost_action_owner           BIGINT             ENCODE AZ64,
+      cost_action_external        BIGINT             ENCODE AZ64,
+      cost_adnetwork_static       BIGINT             ENCODE AZ64,
+      cost_adnetwork_dynamic      BIGINT             ENCODE AZ64,
+      cost_imp_direct             BIGINT             ENCODE AZ64,
+      cost_imp_owner              BIGINT             ENCODE AZ64,
+      cost_base                   BIGINT             ENCODE AZ64,
+      cost_wel                    BIGINT             ENCODE AZ64,
+      cost_bch                    BIGINT             ENCODE AZ64,
+      cost_ref                    BIGINT             ENCODE AZ64,
+      cost_imp_external           BIGINT             ENCODE AZ64,
+      revenue_gross               BIGINT             ENCODE AZ64,
+      UNIQUE(kst_at, unit_id)
+    )
+    DISTKEY(unit_id)
+    SORTKEY(kst_at)
+    ;

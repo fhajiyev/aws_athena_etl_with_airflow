@@ -1,0 +1,27 @@
+pipeline_key: adrecommendersvc_create_ad_embedding
+pipeline_type: mysql_grpc
+pipeline_dag_configs:
+  start_date: 2019-07-01 00:00:00
+  schedule_interval: "@daily"
+
+mysql:
+  conn_id: buzzad_mysql
+  query: |
+    SELECT
+        lineitem_id, GROUP_CONCAT(name) AS names, GROUP_CONCAT(image_url) AS urls
+    FROM
+        creatives
+    WHERE
+        updated_at >= '{start_from}' AND
+        updated_at < '{end_to}' AND
+        image_url <> ''
+    GROUP BY
+    	lineitem_id;
+
+grpc:
+  mapper_func: transform_to_adrecommendersvc_create_ad_embedding_requests
+  stub_class_func: get_adrecommender_stub
+  call_func: CreateAdEmbedding
+  conn_id: adrecommender_svc
+  error_list:
+    - No text in image

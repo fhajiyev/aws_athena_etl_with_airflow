@@ -1,0 +1,46 @@
+---
+pipeline_key: bo_session
+pipeline_type: s3_redshift_sync
+pipeline_dag_configs:
+  start_date: 2019-07-01 00:00:00
+  schedule_interval: "@hourly"
+delay_seconds: 600
+
+s3:
+  bucket: prod-buzzvil-data-lake
+  prefix: buzzad/landing/bo_session
+  partition_prefix: year={year}/month={month}/day={day}/hour={hour}
+redshift:
+  table_name: bo_session
+  fields:
+  - id
+  - viewer_id
+  - ifa
+  - unit_id
+  - lineitem_ids
+  - ad_count
+  - created_at
+  unique_key_list:
+  - id
+  deduplicate_key_list:
+  - id
+  increment_key: created_at
+  increment_key_type: timestamp
+  copy_method: upsert
+  copy_option: jsonpath
+  jsonpath_location: 's3://buzzvil-log-oregon/prod/buzzad/buzzad-general-bo_session/jsonpaths/bo_session.jsonpaths'
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+        id             VARCHAR(45)    NOT NULL   ENCODE ZSTD,
+        viewer_id      VARCHAR(45)    NOT NULL   ENCODE ZSTD,
+        ifa            VARCHAR(45)    NULL       ENCODE ZSTD,
+        unit_id        INT8           NOT NULL   ENCODE ZSTD,
+        lineitem_ids   VARCHAR(512)   NOT NULL   ENCODE LZO,
+        ad_count       INT4           NOT NULL   ENCODE ZSTD,
+        created_at     TIMESTAMP      NOT NULL   ENCODE ZSTD,
+        PRIMARY KEY(id)
+    )
+    DISTKEY (id)
+    SORTKEY (created_at)
+    ;

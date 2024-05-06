@@ -1,0 +1,191 @@
+---
+pipeline_key: bs_allocation_score_log
+pipeline_type: s3_redshift_sync
+pipeline_dag_configs:
+  start_date: 2020-06-10 12:00:00
+  schedule_interval: "@hourly"
+delay_seconds: 600
+
+s3:
+  bucket: buzzvil-log-oregon
+  prefix: prod/buzzscreen/buzzscreen-go-general-DebugScore
+redshift:
+  table_name: bs_allocation_score_log
+  fields:
+  - id
+  - name
+  - title
+  - description
+  - categories
+  - image
+  - media_type
+  - landing_type
+  - clean_mode
+  - clean_link
+  - status
+  - score
+  - json
+  - start_date
+  - end_date
+  - week_slot
+  - display_type
+  - display_weight
+  - ipu
+  - dipu
+  - tipu
+  - target_age_min
+  - target_age_max
+  - registered_days_min
+  - registered_days_max
+  - target_gender
+  - target_language
+  - target_carrier
+  - target_region
+  - target_app
+  - custom_target_1
+  - custom_target_2
+  - custom_target_3
+  - target_unit
+  - country
+  - timezone
+  - organization_id
+  - owner_id
+  - channel_id
+  - provider_id
+  - natural_id
+  - template_id
+  - is_enabled
+  - is_ctr_filter_off
+  - created_at
+  - updated_at
+  - published_at
+  - tags
+  - click_url
+  - target_sdk_max
+  - target_sdk_min
+  - landing_reward
+  - target_os_min
+  - target_os_max
+  - target_battery_optimization
+  - type
+  - channel
+  - clicks
+  - creative_links
+  - image_ratio
+  - impressions
+  - provider
+  - related
+  - related_count
+  - score_factor_json
+  - model_artifact
+  - creative_types
+  - allocated_at
+  - device_id
+  - detarget_app
+  - detarget_app_id
+  - detarget_org
+  - detarget_unit
+  - level
+  - msg
+  - target_app_id
+  - target_org
+  unique_key_list:
+  - id
+  - device_id
+  deduplicate_key_list:
+  - id
+  - device_id
+  increment_key: allocated_at
+  increment_key_type: timestamp
+  copy_method: upsert
+  copy_option: jsonpath_error_max_100
+  jsonpath_location: 's3://buzzvil-log-oregon/prod/buzzscreen/jsonpaths/bs_allocation_score_log.jsonpaths'
+  timeformat: 'YYYY-MM-DDTHH:MI:SS'
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                    INT8            NOT NULL       ENCODE ZSTD,
+      name                  VARCHAR(1024)   DEFAULT NULL   ENCODE LZO,
+      title                 VARCHAR(1024)   DEFAULT NULL   ENCODE LZO,
+      description           VARCHAR(1024)   DEFAULT NULL   ENCODE LZO,
+      categories            VARCHAR(255)    DEFAULT NULL   ENCODE LZO,
+      image                 VARCHAR(255)    DEFAULT NULL   ENCODE LZO,
+      media_type            INT2            DEFAULT NULL       ENCODE ZSTD,
+      landing_type          INT2            DEFAULT NULL       ENCODE ZSTD,
+      clean_mode            INT2         DEFAULT NULL   ENCODE ZSTD,
+      clean_link            VARCHAR(255)    DEFAULT NULL   ENCODE LZO,
+      status                INT2            DEFAULT NULL       ENCODE ZSTD,
+      score                 FLOAT           DEFAULT NULL       ENCODE ZSTD,
+      json                  VARCHAR(500)    DEFAULT NULL       ENCODE LZO,
+
+      start_date            TIMESTAMP       DEFAULT NULL       ENCODE ZSTD,
+      end_date              TIMESTAMP       DEFAULT NULL       ENCODE ZSTD,
+      week_slot             VARCHAR(600)    DEFAULT NULL   ENCODE LZO,
+      display_type          VARCHAR(1)      DEFAULT NULL       ENCODE ZSTD,
+      display_weight        INT8            DEFAULT NULL       ENCODE ZSTD,
+      ipu                   INT8            DEFAULT NULL   ENCODE ZSTD,
+      dipu                  INT8            DEFAULT NULL   ENCODE ZSTD,
+      tipu                  INT8            DEFAULT NULL   ENCODE ZSTD,
+
+      target_age_min        INT2            DEFAULT NULL   ENCODE ZSTD,
+      target_age_max        INT2            DEFAULT NULL   ENCODE ZSTD,
+      registered_days_min   INT2            DEFAULT NULL   ENCODE ZSTD,
+      registered_days_max   INT2            DEFAULT NULL   ENCODE ZSTD,
+      target_gender         VARCHAR(1)      DEFAULT NULL   ENCODE ZSTD,
+      target_language       VARCHAR(10)     DEFAULT NULL   ENCODE ZSTD,
+      target_carrier        VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+      target_region         VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+      target_app            VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+      custom_target_1       VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+      custom_target_2       VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+      custom_target_3       VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+      target_unit           VARCHAR(500)    DEFAULT NULL   ENCODE LZO,
+
+      country               VARCHAR(2)      DEFAULT NULL       ENCODE ZSTD,
+      timezone              VARCHAR(50)     DEFAULT NULL       ENCODE ZSTD,
+      organization_id       INT8            DEFAULT NULL       ENCODE ZSTD,
+      owner_id              INT8            DEFAULT NULL       ENCODE ZSTD,
+      channel_id            INT8            DEFAULT NULL   ENCODE ZSTD,
+      provider_id           INT8            DEFAULT NULL   ENCODE ZSTD,
+      natural_id            VARCHAR(755)    DEFAULT NULL   ENCODE ZSTD,
+      template_id           INT2            DEFAULT NULL       ENCODE ZSTD,
+      is_enabled            BOOLEAN         DEFAULT NULL       ENCODE ZSTD,
+      is_ctr_filter_off     BOOLEAN         DEFAULT NULL       ENCODE ZSTD,
+      created_at            TIMESTAMP       DEFAULT NULL       ENCODE ZSTD,
+      updated_at            TIMESTAMP       DEFAULT NULL       ENCODE ZSTD,
+      published_at          TIMESTAMP       NULL           ENCODE ZSTD,
+      tags                  VARCHAR(1024)   DEFAULT NULL   ENCODE LZO,
+      click_url             VARCHAR(1024)   DEFAULT NULL       ENCODE LZO,
+      target_sdk_max        INT8            DEFAULT NULL   ENCODE ZSTD,
+      target_sdk_min        INT8            DEFAULT NULL   ENCODE ZSTD,
+
+      landing_reward                  INT8                     DEFAULT NULL   ENCODE ZSTD,
+      target_os_min                   INT8                     DEFAULT NULL   ENCODE ZSTD,
+      target_os_max                   INT8                     DEFAULT NULL   ENCODE ZSTD,
+      target_battery_optimization     BOOLEAN                  DEFAULT NULL   ENCODE ZSTD,
+      type                            VARCHAR(255)             DEFAULT NULL   ENCODE ZSTD,
+      channel                         VARCHAR(1024)            DEFAULT NULL   ENCODE ZSTD,
+      clicks                          INT8                     DEFAULT NULL   ENCODE ZSTD,
+      creative_links                  VARCHAR(1024)            DEFAULT NULL   ENCODE ZSTD,
+      image_ratio                     FLOAT                    DEFAULT NULL   ENCODE ZSTD,
+      impressions                     INT8                     DEFAULT NULL   ENCODE ZSTD,
+      provider                        VARCHAR(1024)            DEFAULT NULL   ENCODE ZSTD,
+      related                         INT8                     DEFAULT NULL   ENCODE ZSTD,
+      related_count                   INT8                     DEFAULT NULL   ENCODE ZSTD,
+      score_factor_json               VARCHAR(2048)            DEFAULT NULL   ENCODE LZO,
+      model_artifact                  VARCHAR(255)             DEFAULT NULL   ENCODE ZSTD,
+      creative_types                  VARCHAR(255)             DEFAULT NULL   ENCODE ZSTD,
+      allocated_at                  TIMESTAMP                NOT NULL,
+      device_id                       INT8                     NOT NULL       ENCODE ZSTD,
+      detarget_app                    VARCHAR(1024)            DEFAULT NULL   ENCODE ZSTD,
+      detarget_app_id                 VARCHAR(1024)            DEFAULT NULL   ENCODE ZSTD,
+      detarget_org                    VARCHAR(1024)            DEFAULT NULL   ENCODE ZSTD,
+      detarget_unit                   VARCHAR(1024)            DEFAULT NULL   ENCODE ZSTD,
+      level                           VARCHAR(255)             DEFAULT NULL   ENCODE ZSTD,
+      msg                             VARCHAR(255)             DEFAULT NULL   ENCODE ZSTD,
+      target_app_id                   VARCHAR(1024)            DEFAULT NULL   ENCODE ZSTD,
+      target_org                      VARCHAR(1024)            DEFAULT NULL   ENCODE ZSTD
+    )
+    DISTKEY (device_id)
+    SORTKEY (allocated_at)
+    ;

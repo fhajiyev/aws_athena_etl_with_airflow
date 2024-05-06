@@ -1,0 +1,46 @@
+---
+pipeline_key: sj_user_balance
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: slidejoy_mysql
+  table_name: tbl_userBalance
+  fields:
+  - userId
+  - currentBalance
+  - lifetimeBalance
+  - creditedDate
+  - description
+  - updateDate
+  increment_key: updateDate
+  increment_key_type: timestamp
+  unique_key_list:
+  - userId
+
+redshift:
+  table_name: sj_user_balance
+  fields:
+  - user_id
+  - current_balance
+  - lifetime_balance
+  - credited_at
+  - description
+  - updated_at
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+        user_id           VARCHAR(128)    NOT NULL       ENCODE ZSTD,
+        current_balance   INT8            NOT NULL       ENCODE ZSTD,
+        lifetime_balance  INT8            NOT NULL       ENCODE ZSTD,
+        credited_at       TIMESTAMP       NOT NULL       ENCODE ZSTD,
+        description       VARCHAR(128)    DEFAULT NULL   ENCODE ZSTD,
+        updated_at        TIMESTAMP       NOT NULL       ENCODE ZSTD
+    )
+    DISTKEY (user_id)
+    SORTKEY (updated_at)
+  increment_key: updated_at
+  increment_key_type: timestamp
+  unique_key_list:
+  - user_id

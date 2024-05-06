@@ -1,0 +1,107 @@
+---
+pipeline_key: buzzml_g_user_histories_aggregated
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-11-24 00:00:00
+  schedule_interval: "@hourly"
+  max_active_runs: 1
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency-oracle
+    - trigger: sla_miss
+      args:
+        channel: data-emergency-oracle
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: athena_process_buzzml_g_user_histories
+    timedelta_hours: 0
+
+sensor_soft_fail: false
+
+athena:
+  workgroup: oracle
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+          format = 'PARQUET',
+          parquet_compression = 'SNAPPY',
+          external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+      SELECT
+          viewer_id,
+          category,
+          count,
+          ARRAY_JOIN(histories, '|') AS histories
+      FROM (
+          WITH
+          recent AS (
+              SELECT
+                  *,
+                  RANK() OVER (PARTITION BY viewer_id ORDER BY occurred_at DESC) AS past
+              FROM
+                  prod_buzzml.g_user_histories
+              WHERE
+                  partition_timestamp > TIMESTAMP '{start_time}' - INTERVAL '28' DAY
+                  AND partition_timestamp <= TIMESTAMP '{start_time}'
+          ),
+          histories AS (
+              SELECT
+                  viewer_id,
+                  CONCAT(
+                      COALESCE(allocation_id, ''), ',',
+                      COALESCE(CAST(lineitem_id AS VARCHAR(32)), ''), ',',
+                      COALESCE(CAST(unit_id AS VARCHAR(32)), ''), ',',
+                      COALESCE(CAST(product_id AS VARCHAR(32)), ''), ',',
+                      COALESCE(CAST(product_feed_id AS VARCHAR(32)), ''), ',',
+                      COALESCE(user_action, ''), ',',
+                      COALESCE(CAST(is_occurred AS VARCHAR(8)), ''), ',',
+                      COALESCE(reward_condition, ''), ',',
+                      COALESCE(occurred_at, '')
+                  ) AS history
+              FROM
+                  recent
+              WHERE
+                  past <= 200
+          )
+          SELECT
+              viewer_id,
+              'deprecated' as category,
+              COUNT(*) AS count,
+              ARRAY_AGG(history) AS histories
+          FROM
+              histories
+          GROUP BY
+              viewer_id
+      )
+    );
+
+  output_bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  output_prefix: buzzml/gold/user_histories_aggregated/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzml_g_user_histories_aggregated
+  file_extension: parquet
+
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzml"
+  table: g_user_histories_aggregated
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/buzzml/gold/user_histories_aggregated"
+
+  partition:
+    name: partition_timestamp
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+    location: "s3://{{{{ var.value.get('server_env', 'prod') }}}}-buzzvil-data-lake/buzzml/gold/user_histories_aggregated/year={year}/month={month}/day={day}/hour={hour}"
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      viewer_id                VARCHAR(64),
+      category                 VARCHAR(255),
+      count                    SMALLINT,
+      histories                STRING
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    tblproperties("parquet.compress"="SNAPPY");

@@ -1,0 +1,74 @@
+# CREATE TABLE `app_config` (
+#   `id` int(11) NOT NULL AUTO_INCREMENT,
+#   `app_id` bigint(20) NOT NULL,
+#   `base_reward_step` int(10) unsigned NOT NULL,
+#   `base_reward` int(10) unsigned NOT NULL,
+#   `reward_daily_limit` int(10) unsigned NOT NULL,
+#   `timezone` varchar(32) NOT NULL,
+#   `updated_at` datetime(6) NOT NULL,
+#   `created_at` datetime(6) NOT NULL,
+#   `buzzad_unit_id` bigint(20) NOT NULL,
+#   `name` varchar(128) NOT NULL,
+#   PRIMARY KEY (`id`),
+#   KEY `app_config_app_id_11bc9091` (`app_id`),
+#   KEY `app_config_app_id_id_419d34ce_idx` (`app_id`,`id`),
+#   CONSTRAINT `app_config_chk_1` CHECK ((`base_reward_step` >= 0)),
+#   CONSTRAINT `app_config_chk_2` CHECK ((`base_reward` >= 0)),
+#   CONSTRAINT `app_config_chk_3` CHECK ((`reward_daily_limit` >= 0))
+# ) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+---
+pipeline_key: buzzwalksvc_ls_app_config
+pipeline_type: mysql_unload_s3
+pipeline_dag_configs:
+  start_date: 2020-09-16 17:00:00
+  schedule_interval: "0 17 * * *"
+mysql:
+  conn_id: buzzwalksvc_mysql
+  table_name: app_config
+  fields:
+  - id
+  - app_id
+  - base_reward_step
+  - base_reward
+  - reward_daily_limit
+  - timezone
+  - updated_at
+  - created_at
+  - buzzad_unit_id
+  - name
+  increment_key: id
+  increment_key_type: dump
+
+s3:
+  bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  prefix: buzzwalksvc/landing_snapshot/app_config/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzwalksvc_ls_app_config
+  data_format: parquet
+
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id                   BIGINT,
+      app_id               BIGINT,
+      base_reward_step     BIGINT,
+      base_reward          BIGINT,
+      reward_daily_limit   BIGINT,
+      timezone             VARCHAR(32),
+      updated_at           TIMESTAMP,
+      created_at           TIMESTAMP,
+      buzzad_unit_id       BIGINT,
+      name                 VARCHAR(512)
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY");
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzwalksvc"
+  table: ls_app_config
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/buzzwalksvc/landing_snapshot/app_config"
+  partition:
+    key: partition_timestamp
+    value: "{{execution_date.strftime('%Y-%m-%d %H:00:00')}}"
+    subdir: "year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}"
+

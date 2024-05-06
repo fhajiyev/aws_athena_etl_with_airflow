@@ -1,0 +1,29 @@
+# This pipeline checks whether ba_statistics_unit_creative was synced properly to Redshift.
+# Note the 3 hour delay set by the origin data
+# Please refer to the github link for details
+# https://github.com/Buzzvil/adserver/blob/master/adserver/management/commands/update_statistics_unit_creative_hourly.py
+---
+pipeline_key: redshift_ba_statistics_unit_creative__existence
+pipeline_type: check_data
+pipeline_dag_configs:
+  start_date: 2020-10-28 00:00:00
+  schedule_interval: "0 * * * *"
+  catch_up: False
+
+augend:
+  data_source:
+    type: redshift
+    conn_id: redshift
+  query: |
+    SELECT
+      COUNT(*) AS result
+    FROM
+      ba_statistics_unit_creative
+    WHERE
+      data_at >= TIMESTAMP'{start_time}' - INTERVAL '3 HOURS' AND
+      data_at < TIMESTAMP'{end_time}'
+  multiplier: 1
+
+comparison:
+  operator: gt
+  threshold: 0

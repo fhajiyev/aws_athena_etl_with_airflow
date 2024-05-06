@@ -1,0 +1,95 @@
+---
+pipeline_key: ba_g_fill
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-02-10 08:10:00
+  schedule_interval: "10 * * * *"
+athena:
+  workgroup: buzzad
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+          format = 'PARQUET',
+          parquet_compression = 'SNAPPY',
+          external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+        SELECT
+          filled,
+          position,
+          request_id,
+          viewer_id,
+          SPLIT_PART(viewer_id, 'ifa:', 2) as ifa,
+          publisher_user_id,
+          client_ip,
+          request_country as country,
+          CASE
+            WHEN request_sex IN ('m','M') THEN 'M'
+            WHEN request_sex IN ('f','F','W') THEN 'F'
+            ELSE NULL
+          END AS sex,
+          CASE
+            WHEN request_age > 100 THEN NULL
+            WHEN request_age <= 0 THEN NULL
+            ELSE request_age
+          END AS age,
+          request_region as region,
+          request_carrier as carrier,
+          request_device as device,
+          request_network_type as network_type,
+          unit_id,
+          unit_type,
+          lineitem_id,
+          item_type,
+          revenue_type,
+          unit_price,
+          is_incentive,
+          adnetwork_id,
+          "time" as created_at
+        FROM
+            prod_buzzad.l_fill
+        WHERE
+            partition_timestamp >= TIMESTAMP'{start_time}' AND
+            partition_timestamp < TIMESTAMP'{end_time}'
+    );
+  output_bucket: prod-buzzvil-data-lake
+  output_prefix: buzzad/gold/fill/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzad_gold_fill
+  file_extension: parquet
+
+  database: prod_buzzad
+  table: g_fill
+  location: s3://prod-buzzvil-data-lake/buzzad/gold/fill
+  partition:
+    name: partition_timestamp
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+    location: s3://prod-buzzvil-data-lake/buzzad/gold/fill/year={year}/month={month}/day={day}/hour={hour}
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      filled              BOOLEAN,
+      position            INT,
+      request_id          VARCHAR(64),
+      viewer_id           VARCHAR(64),
+      ifa                 VARCHAR(64),
+      publisher_user_id   VARCHAR(255),
+      client_ip           VARCHAR(16),
+      country             VARCHAR(2),
+      sex                 VARCHAR(1),
+      age                 BIGINT,
+      region              VARCHAR(128),
+      carrier             VARCHAR(128),
+      device              VARCHAR(20),
+      network_type        VARCHAR(8),
+      unit_id             BIGINT,
+      unit_type           VARCHAR(10),
+      lineitem_id         BIGINT,
+      item_type           VARCHAR(10),
+      revenue_type        VARCHAR(10),
+      unit_price          DECIMAL(18,9),
+      is_incentive        BOOLEAN,
+      adnetwork_id        BIGINT,
+      created_at          TIMESTAMP
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    tblproperties("parquet.compress"="SNAPPY");

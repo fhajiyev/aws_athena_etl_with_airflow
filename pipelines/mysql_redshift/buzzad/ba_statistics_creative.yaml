@@ -1,0 +1,60 @@
+# Note that increment_key of Redshift does not actually match with DISTKEY nor SORTKEY.
+# This is to sacrifice ETL time for performance gains in actual data access query.
+---
+pipeline_key: ba_statistics_creative
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: buzzad_mysql
+  table_name: statistics_creative
+  fields:
+  - id
+  - lineitem_id
+  - creative_id
+  - unique_impression
+  - unique_click
+  - created_at
+  - updated_at
+  - data_at
+  - type
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - creative_id
+  - data_at
+
+redshift:
+  table_name: ba_statistics_creative
+  fields:
+  - id
+  - lineitem_id
+  - creative_id
+  - unique_impression
+  - unique_click
+  - created_at
+  - updated_at
+  - data_at
+  - type
+  copy_method: incremental
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+        id                  INT8        NOT NULL       ENCODE AZ64,
+        lineitem_id         INT8        NOT NULL       ENCODE AZ64,
+        creative_id         INT8        NOT NULL       ENCODE AZ64,
+        unique_impression   INT4        DEFAULT NULL   ENCODE AZ64,
+        unique_click        INT4        DEFAULT NULL   ENCODE AZ64,
+        created_at          TIMESTAMP   NOT NULL       ENCODE ZSTD,
+        updated_at          TIMESTAMP   NOT NULL       ENCODE ZSTD,
+        data_at             TIMESTAMP   DEFAULT NULL   ENCODE ZSTD,
+        type                INT2        DEFAULT NULL   ENCODE AZ64
+    )
+    DISTKEY(id)
+    SORTKEY(creative_id, type, data_at);
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - creative_id
+  - type
+  - data_at

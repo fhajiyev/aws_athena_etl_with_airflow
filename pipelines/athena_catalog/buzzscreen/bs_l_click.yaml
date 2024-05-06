@@ -1,0 +1,38 @@
+---
+pipeline_key: bs_l_click
+pipeline_type: athena_catalog
+pipeline_dag_configs:
+  start_date: 2020-01-19 00:00:00
+  schedule_interval: "0 * * * *"
+athena:
+  database: prod_buzzscreen
+  table: l_click
+  location: s3://prod-buzzvil-data-lake/buzzscreen/landing/click
+  partition:
+    name: partition_timestamp
+    location: s3://prod-buzzvil-data-lake/buzzscreen/landing/click/year={year}/month={month}/day={day}/hour={hour}
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      campaign_id           BIGINT,
+      country               VARCHAR(63),
+      device_id             BIGINT,
+      ifa                   VARCHAR(45),
+      ip                    BIGINT,
+      level                 VARCHAR(31),
+      message               VARCHAR(31),
+      model_artifact        VARCHAR(63),
+      msg                   VARCHAR(31),
+      position              VARCHAR(15),
+      session_id            VARCHAR(45),
+      sex                   VARCHAR(15),
+      time                  TIMESTAMP,
+      unit_device_token     VARCHAR(45),
+      unit_id               BIGINT,
+      year_of_birth         INT
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1'
+    ) LOCATION '{location}';

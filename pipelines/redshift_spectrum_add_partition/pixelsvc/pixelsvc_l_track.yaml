@@ -1,0 +1,31 @@
+---
+pipeline_key: pixelsvc_l_track
+pipeline_type: redshift_spectrum_add_partition
+pipeline_dag_configs:
+  start_date: 2020-06-29 05:00:00
+  schedule_interval: "@hourly"
+athena:
+  table_name: pixelsvc_l_track
+  fields:
+  - payload
+  - log_at
+  partition:
+    location: s3://prod-buzzvil-data-lake/eks/namespace_name=pixelsvc/type=track_log
+    name: partition_timestamp
+    type: hourly_hive
+
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE spectrum.pixelsvc_l_track (
+        payload               VARCHAR(65535),
+        log_at                TIMESTAMP
+    )
+    PARTITIONED BY (
+      partition_timestamp timestamp
+    )
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'ignore.malformed.json' = 'true'
+    )
+    LOCATION
+      's3://prod-buzzvil-data-lake/eks/namespace_name=pixelsvc/type=track_log';

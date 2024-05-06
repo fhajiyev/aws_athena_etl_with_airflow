@@ -1,0 +1,58 @@
+# {athena.pointsvc.g_vw_point sum(reward)} - {redshift.bs_point sum(reward)} >= 0
+# assume redshift bs_point has lost records
+# https://github.com/Buzzvil/buzzscreen/blob/2925f4c762701ff41e562fd9e1d89a21e8163712/statistics/management/commands/update_statistics_point.py#L80
+---
+pipeline_key: athena_point__redshift_point
+pipeline_type: check_data
+pipeline_dag_configs:
+  start_date: 2020-07-21 12:00:00
+  schedule_interval: "0 * * * *"
+  max_active_runs: 1
+
+upstream_dependencies:
+  - dag_id: athena_view_bs_g_vw_point
+    timedelta_hours: 0
+
+# redshift dedup job copy 2hours old data
+# and add 1 hour to guarantee dedup job is ended
+execution_delay: 10800
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: airflow-check-monitoring
+    - trigger: sla_miss
+      args:
+        channel: airflow-check-monitoring
+
+augend:
+  data_source:
+    type: athena
+    database: "{env}_buzzscreen"
+    workgroup: buzzscreen
+  query: |
+    SELECT SUM(amount) as result
+    FROM {env}_buzzscreen.g_vw_point
+    WHERE
+      partition_timestamp >= TIMESTAMP '{start_time}'
+      AND partition_timestamp <  TIMESTAMP '{end_time}'
+      AND created_at >= TIMESTAMP '{start_time}'
+      AND created_at <  TIMESTAMP '{end_time}'
+
+# Source: https://github.com/Buzzvil/buzzscreen/blob/2925f4c/reward/management/commands/backup_point_to_redshift.py
+addend:
+  data_source:
+    type: redshift
+    conn_id: redshift
+  query: |
+    SELECT SUM(amount) as result
+    FROM bs_point
+    WHERE
+      created_at >= TIMESTAMP '{start_time}'
+      AND created_at <  TIMESTAMP '{end_time}'
+  multiplier: -1
+
+comparison:
+  operator: ge
+  threshold: 0

@@ -1,0 +1,94 @@
+# Schema mappings are from the following
+# https://github.com/Buzzvil/buzzscreen/blob/master/reward/dynamodb_models.py#L82
+---
+pipeline_key: bs_g_point
+pipeline_type: athena_deduplicate
+pipeline_dag_configs:
+  start_date: 2020-07-28 11:00:00
+  schedule_interval: "@hourly"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency
+    - trigger: sla_miss
+      args:
+        channel: data-emergency
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: athena_process_pointsvc_g_stream_point
+    timedelta_hours: 0
+
+downstream_dependencies:
+  - dag_id: athena_view_bs_g_vw_point
+    task_id: generate_uuid
+  - dag_id: check_data_bs_g_point_deduplicated
+    task_id: generate_uuid
+
+athena:
+  workgroup: buzzscreen
+  deduplication:
+    type: increased_number
+    scan_days: 7
+    original_table: g_stream_point
+    fields:
+      - device_id
+      - version
+      - unit_id
+      - unit_device_token
+      - requested
+      - point_type
+      - title
+      - sub_type
+      - campaign_id
+      - amount
+      - base_reward
+      - deposit_sum
+      - created_at
+      - scatter
+      - slot
+      - updated_at
+      - partition_timestamp
+    unique_fields:
+      - device_id
+      - version
+    updated_field: requested
+  output_bucket: "{env}-buzzvil-data-lake"
+  output_prefix: buzzscreen/gold/point/year={year}/month={month}/day={day}/hour={hour}
+  skip_on_empty_query_result: false
+  file_key: bs_g_point
+  file_extension: parquet
+
+  database: "{env}_buzzscreen"
+  table: g_point
+  location: s3://{env}-buzzvil-data-lake/buzzscreen/gold/point
+  partition:
+    key: partition_timestamp
+    subdir: year={year}/month={month}/day={day}/hour={hour}
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+        device_id           BIGINT,
+        version             BIGINT,
+        unit_id             BIGINT,
+        unit_device_token   VARCHAR(512),
+        requested           BOOLEAN,
+        point_type          VARCHAR(64),
+        title               VARCHAR(1024),
+        sub_type            VARCHAR(16),
+        campaign_id         BIGINT,
+        amount              BIGINT,
+        base_reward         BIGINT,
+        deposit_sum         BIGINT,
+        created_at          TIMESTAMP,
+        scatter             INTEGER,
+        slot                TIMESTAMP,
+        updated_at          TIMESTAMP
+    )
+    PARTITIONED BY ({partition_key} timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    tblproperties("parquet.compress"="SNAPPY");

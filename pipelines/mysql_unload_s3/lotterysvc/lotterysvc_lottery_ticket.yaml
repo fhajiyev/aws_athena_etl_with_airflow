@@ -1,0 +1,58 @@
+# CREATE TABLE `lottery_ticket` (
+#   `id` int(11) NOT NULL AUTO_INCREMENT,
+#   `lottery_id` int(11) NOT NULL,
+#   `account_id` int(11) NOT NULL,
+#   `numbers` varchar(255) DEFAULT NULL,
+#   `ordered_numbers` varchar(255) DEFAULT NULL,
+#   `complete` tinyint(1) NOT NULL DEFAULT '0',
+#   `ifa` varchar(255) NOT NULL DEFAULT '',
+#   `publisher_user_id` varchar(255) NOT NULL DEFAULT '',
+#   PRIMARY KEY (`id`),
+#   UNIQUE KEY `uc_lottery_ticket_lid_aid` (`lottery_id`,`account_id`)
+# ) ENGINE=InnoDB AUTO_INCREMENT=106052 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+---
+pipeline_key: lotterysvc_ls_lottery_ticket
+pipeline_type: mysql_unload_s3
+pipeline_dag_configs:
+  start_date: 2020-09-16 17:00:00
+  schedule_interval: "0 17 * * *"
+
+mysql:
+  conn_id: lotterysvc_mysql
+  table_name: lottery
+  fields:
+  - id
+  - app_id
+  - lottery_key
+  - starts_at
+  - winning_numbers
+  increment_key: id
+  increment_key_type: numeric
+
+s3:
+  bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  prefix: lotterysvc/landing_snapshot/lottery_ticket/year={year}/month={month}/day={day}/hour={hour}
+  file_key: lotterysvc_ls_lottery_ticket
+  data_format: parquet
+
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id                 BIGINT,
+      app_id             BIGINT,
+      lottery_key        VARCHAR(255),
+      starts_at          TIMESTAMP,
+      winning_numbers    VARCHAR(255)
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY");
+  database: "{{ var.value.get('server_env', 'prod') }}_lotterysvc"
+  table: ls_lottery_ticket
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/lotterysvc/landing_snapshot/lottery_ticket"
+  partition:
+    key: partition_timestamp
+    value: "{{execution_date.strftime('%Y-%m-%d %H:00:00')}}"
+    subdir: "year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}"
+

@@ -1,0 +1,366 @@
+# CREATE TABLE `lineitems` (
+#   `id` bigint(20) NOT NULL AUTO_INCREMENT,
+#   `item_type` varchar(10) NOT NULL,
+#   `item_name` varchar(100) NOT NULL,
+#   `description` varchar(1000) NOT NULL,
+#   `revenue_type` varchar(10) NOT NULL,
+#   `revenue` decimal(10,4) NOT NULL,
+#   `start_date` datetime(6) NOT NULL,
+#   `impression_url` varchar(3000) NOT NULL,
+#   `click_url` varchar(3000) NOT NULL,
+#   `end_date` datetime(6) NOT NULL,
+#   `is_active` varchar(1) NOT NULL,
+#   `created_at` datetime(6) NOT NULL,
+#   `updated_at` datetime(6) NOT NULL,
+#   `budget` int(11) NOT NULL,
+#   `extra_data` varchar(1000) NOT NULL,
+#   `is_incentive` varchar(1) NOT NULL,
+#   `platform` varchar(4) NOT NULL,
+#   `action_description` varchar(1024) NOT NULL,
+#   `adnetwork_id` bigint(20) DEFAULT NULL,
+#   `adnetwork_campaign_id` varchar(64) DEFAULT NULL,
+#   `status` varchar(1) NOT NULL,
+#   `currency` varchar(10) NOT NULL,
+#   `os` varchar(30) NOT NULL,
+#   `icon` varchar(512) NOT NULL,
+#   `call_to_action` varchar(64) NOT NULL,
+#   `owner_id` bigint(20) DEFAULT NULL,
+#   `timezone` varchar(32) NOT NULL,
+#   `daily_budget` int(11) DEFAULT NULL,
+#   `image` varchar(255) DEFAULT NULL,
+#   `slot` varchar(100) DEFAULT NULL,
+#   `display_type` varchar(1) NOT NULL,
+#   `display_weight` int(10) unsigned DEFAULT NULL,
+#   `display_priority` int(10) unsigned DEFAULT NULL,
+#   `ipu` int(10) unsigned DEFAULT NULL,
+#   `tipu` int(10) unsigned DEFAULT NULL,
+#   `landing_reward` smallint(5) unsigned DEFAULT NULL,
+#   `unlock_reward` smallint(5) unsigned DEFAULT NULL,
+#   `sex` varchar(1) DEFAULT NULL,
+#   `age_from` smallint(5) unsigned DEFAULT NULL,
+#   `age_to` smallint(5) unsigned DEFAULT NULL,
+#   `carrier` varchar(255) DEFAULT NULL,
+#   `region` longtext,
+#   `device_name` longtext,
+#   `target_app` longtext,
+#   `target_unit` varchar(1000) DEFAULT NULL,
+#   `country` varchar(63) DEFAULT NULL,
+#   `detail_fixed` varchar(1) NOT NULL,
+#   `relationship` varchar(1) DEFAULT NULL,
+#   `image_ios` varchar(255) DEFAULT NULL,
+#   `lockscreen_on` varchar(1) NOT NULL,
+#   `offerwall_on` varchar(1) NOT NULL,
+#   `action_reward` smallint(5) unsigned DEFAULT NULL,
+#   `unit_group_target` varchar(500) DEFAULT NULL,
+#   `unit_group_payout` varchar(500) DEFAULT NULL,
+#   `bypass_duplicated_check` varchar(1) NOT NULL,
+#   `is_test` varchar(1) NOT NULL,
+#   `offerwall_weight` int(11) DEFAULT NULL,
+#   `alloc_cap_budget` int(10) unsigned DEFAULT NULL,
+#   `alloc_cap_percent` int(10) unsigned DEFAULT NULL,
+#   `short_action_description` varchar(255) NOT NULL,
+#   `unit_price` decimal(18,9) NOT NULL,
+#   `unit_group_sales` varchar(1000) DEFAULT NULL,
+#   `budget_v2` int(11) DEFAULT NULL,
+#   `daily_budget_v2` int(11) DEFAULT NULL,
+#   `custom_target_1` varchar(255) DEFAULT NULL,
+#   `custom_target_2` varchar(255) DEFAULT NULL,
+#   `custom_target_3` varchar(255) DEFAULT NULL,
+#   `tags` varchar(255) DEFAULT NULL,
+#   `unit_data` varchar(1000) DEFAULT NULL,
+#   `action_point` decimal(18,9) DEFAULT NULL,
+#   `landing_point` decimal(18,9) DEFAULT NULL,
+#   `unlock_point` decimal(18,9) DEFAULT NULL,
+#   `targeting_fixed` varchar(1) NOT NULL,
+#   `is_hidden` varchar(1) NOT NULL,
+#   `is_backfill` varchar(1) NOT NULL,
+#   `ad_group_id` bigint(20) DEFAULT NULL,
+#   `is_confirmed` varchar(1) NOT NULL,
+#   `is_optimized` varchar(1) NOT NULL,
+#   `creative` varchar(1000) DEFAULT NULL,
+#   `market_id` varchar(255) DEFAULT NULL,
+#   `week_slot` varchar(600) DEFAULT NULL,
+#   `custom_audience` longtext,
+#   `organization_id` bigint(20) DEFAULT NULL,
+#   `throttle_by` int(11) DEFAULT NULL,
+#   `throttle_until` datetime DEFAULT NULL,
+#   `category` varchar(255) DEFAULT NULL,
+#   `locale_extra_data` longtext NOT NULL,
+#   `dipu` int(10) unsigned DEFAULT NULL,
+#   `landing_type` smallint(5) unsigned DEFAULT NULL,
+#   `adnetwork_config` longtext,
+#   `target_locations` longtext,
+#   `preferred_browser` smallint(5) unsigned DEFAULT NULL,
+#   `ecpm_alloc_off` varchar(1) DEFAULT 'N',
+#   `fill_rate` decimal(10,5) DEFAULT '1.00000',
+#   `target_publisher_app` varchar(128) DEFAULT NULL,
+#   `alloc_cap_on` tinyint(1) NOT NULL DEFAULT '0',
+#   `alloc_cap_rate` decimal(7,4) DEFAULT NULL,
+#   `weather_target` varchar(1000) DEFAULT NULL,
+#   `target_unit_sales` varchar(1000) DEFAULT NULL,
+#   `wifi_only` varchar(1) NOT NULL DEFAULT 'N',
+#   `nru_from` smallint(5) unsigned DEFAULT NULL,
+#   `nru_to` smallint(5) unsigned DEFAULT NULL,
+#   `objective` varchar(30) NOT NULL DEFAULT '',
+#   `cpu` int(10) unsigned DEFAULT NULL,
+#   `dcpu` int(10) unsigned DEFAULT NULL,
+#   `tcpu` int(10) unsigned DEFAULT NULL,
+#   `reward_period` int(11),
+#   `mock_adn_response` varchar(1) NOT NULL DEFAULT 'N',
+#   `integration_type` varchar(1) DEFAULT NULL,
+#   `memo` varchar(1000) DEFAULT NULL,
+#   PRIMARY KEY (`id`),
+#   KEY `lineitems_4dc2a7d8` (`item_name`),
+#   KEY `lineitems_5b9e4797` (`end_date`),
+#   KEY `lineitems_25aff67e` (`adnetwork_id`),
+#   KEY `lineitems_1f12b5ff` (`item_type`),
+#   KEY `lineitems_08277b15` (`owner_id`),
+#   KEY `lineitems_52dc696d` (`adnetwork_campaign_id`),
+#   KEY `lineitems_22ff94c4` (`ad_group_id`),
+#   KEY `lineitems_26b2345e` (`organization_id`),
+#   KEY `lineitems_updated_at_c1a20c2b_uniq` (`updated_at`)
+# ) ENGINE=InnoDB AUTO_INCREMENT=1753221 DEFAULT CHARSET=utf8;
+---
+pipeline_key: buzzad_ls_lineitem
+pipeline_type: mysql_unload_s3
+pipeline_dag_configs:
+  start_date: 2020-09-01 17:00:00
+  schedule_interval: "0 17 * * *"
+mysql:
+  conn_id: buzzad_mysql
+  table_name: lineitems
+  increment_key: id
+  increment_key_type: numeric
+  fields:
+    - id
+    - ad_group_id
+    - item_type
+    - item_name
+    - category
+    - description
+    - revenue_type
+    - revenue
+    - unit_price
+    - currency
+    - budget
+    - daily_budget
+    - budget_v2
+    - daily_budget_v2
+    - start_date
+    - end_date
+    - impression_url
+    - extra_data
+    - is_active
+    - is_hidden
+    - is_optimized
+    - is_confirmed
+    - is_backfill
+    - is_incentive
+    - ecpm_alloc_off
+    - fill_rate
+    - created_at
+    - updated_at
+    - status
+    - icon
+    - image
+    - image_ios
+    - lockscreen_on
+    - offerwall_on
+    - tags
+    - creative
+    - os
+    - platform
+    - action_description
+    - short_action_description
+    - call_to_action
+    - adnetwork_id
+    - adnetwork_campaign_id
+    - owner_id
+    - timezone
+    - detail_fixed
+    - targeting_fixed
+    - bypass_duplicated_check
+    - is_test
+    - offerwall_weight
+    - unit_data
+    - market_id
+    - slot
+    - week_slot
+    - display_type
+    - display_weight
+    - display_priority
+    - ipu
+    - tipu
+    - dipu
+    - landing_reward
+    - unlock_reward
+    - action_reward
+    - landing_point
+    - unlock_point
+    - action_point
+    - alloc_cap_percent
+    - alloc_cap_budget
+    - alloc_cap_on
+    - sex
+    - age_from
+    - age_to
+    - carrier
+    - region
+    - device_name
+    - target_app
+    - relationship
+    - target_unit
+    - custom_target_1
+    - custom_target_2
+    - custom_target_3
+    - country
+    - unit_group_target
+    - unit_group_sales
+    - target_locations
+    - custom_audience
+    - landing_type
+    - preferred_browser
+    - target_publisher_app
+    - organization_id
+    - throttle_by
+    - throttle_until
+    - locale_extra_data
+    - adnetwork_config
+    - click_url
+    - wifi_only
+    - nru_from
+    - nru_to
+    - objective
+    - cpu
+    - dcpu
+    - tcpu
+    - reward_period
+    - mock_adn_response
+    - integration_type
+    - memo
+s3:
+  bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  prefix: buzzad/landing_snapshot/lineitem/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzad_ls_lineitem
+  data_format: parquet
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id                           BIGINT,
+      ad_group_id                  BIGINT,
+      item_type                    VARCHAR(10),
+      item_name                    VARCHAR(300),
+      category                     VARCHAR(255),
+      description                  VARCHAR(3000),
+      revenue_type                 VARCHAR(10),
+      revenue                      DOUBLE,
+      unit_price                   DOUBLE,
+      currency                     VARCHAR(10),
+      budget                       BIGINT,
+      daily_budget                 BIGINT,
+      budget_v2                    BIGINT,
+      daily_budget_v2              BIGINT,
+      start_date                   TIMESTAMP,
+      end_date                     TIMESTAMP,
+      impression_url               VARCHAR(3000),
+      extra_data                   VARCHAR(2048),
+      is_active                    VARCHAR(1),
+      is_hidden                    VARCHAR(1),
+      is_optimized                 VARCHAR(1),
+      is_confirmed                 VARCHAR(1),
+      is_backfill                  VARCHAR(1),
+      is_incentive                 VARCHAR(1),
+      ecpm_alloc_off               VARCHAR(1),
+      fill_rate                    DOUBLE,
+      created_at                   TIMESTAMP,
+      updated_at                   TIMESTAMP,
+      status                       VARCHAR(1),
+      icon                         VARCHAR(1024),
+      image                        VARCHAR(512),
+      image_ios                    VARCHAR(512),
+      lockscreen_on                VARCHAR(1),
+      offerwall_on                 VARCHAR(1),
+      tags                         VARCHAR(765),
+      creative                     VARCHAR(3000),
+      os                           VARCHAR(30),
+      platform                     VARCHAR(4),
+      action_description           VARCHAR(3072),
+      short_action_description     VARCHAR(765),
+      call_to_action               VARCHAR(192),
+      adnetwork_id                 BIGINT,
+      adnetwork_campaign_id        VARCHAR(64),
+      owner_id                     BIGINT,
+      timezone                     VARCHAR(32),
+      detail_fixed                 VARCHAR(1),
+      targeting_fixed              VARCHAR(1),
+      bypass_duplicated_check      VARCHAR(1),
+      is_test                      VARCHAR(1),
+      offerwall_weight             BIGINT,
+      unit_data                    VARCHAR(1000),
+      market_id                    VARCHAR(255),
+      slot                         VARCHAR(100),
+      week_slot                    VARCHAR(600),
+      display_type                 VARCHAR(1),
+      display_weight               INT,
+      display_priority             INT,
+      ipu                          INT,
+      tipu                         INT,
+      dipu                         INT,
+      landing_reward               INT,
+      unlock_reward                INT,
+      action_reward                INT,
+      landing_point                DOUBLE,
+      unlock_point                 DOUBLE,
+      action_point                 DOUBLE,
+      alloc_cap_percent            INT,
+      alloc_cap_budget             INT,
+      alloc_cap_on                 INT,
+      sex                          VARCHAR(1),
+      age_from                     INT,
+      age_to                       INT,
+      carrier                      VARCHAR(255),
+      region                       VARCHAR(2048),
+      device_name                  VARCHAR(65535),
+      target_app                   VARCHAR(65535),
+      relationship                 VARCHAR(1),
+      target_unit                  VARCHAR(2048),
+      custom_target_1              VARCHAR(255),
+      custom_target_2              VARCHAR(255),
+      custom_target_3              VARCHAR(255),
+      country                      VARCHAR(63),
+      unit_group_target            VARCHAR(500),
+      unit_group_sales             VARCHAR(1000),
+      target_locations             VARCHAR(65535),
+      custom_audience              VARCHAR(1024),
+      landing_type                 INT,
+      preferred_browser            INT,
+      target_publisher_app         VARCHAR(128),
+      organization_id              BIGINT,
+      throttle_by                  BIGINT,
+      throttle_until               TIMESTAMP,
+      locale_extra_data            VARCHAR(65535),
+      adnetwork_config             VARCHAR(65535),
+      click_url                    VARCHAR(3000),
+      wifi_only                    VARCHAR(1),
+      nru_from                     INT,
+      nru_to                       INT,
+      objective                    VARCHAR(128),
+      cpu                          INT,
+      dcpu                         INT,
+      tcpu                         INT,
+      reward_period                BIGINT,
+      mock_adn_response            VARCHAR(1),
+      integration_type             VARCHAR(1),
+      memo                         VARCHAR(4096)
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY");
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzad"
+  table: ls_lineitem
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/buzzad/landing_snapshot/lineitem"
+  partition:
+    key: partition_timestamp
+    value: "{{execution_date.strftime('%Y-%m-%d %H:00:00')}}"
+    subdir: "year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}"

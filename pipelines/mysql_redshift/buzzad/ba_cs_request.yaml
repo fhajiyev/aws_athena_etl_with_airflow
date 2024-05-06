@@ -1,0 +1,48 @@
+---
+pipeline_key: ba_cs_request
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: buzzad_mysql
+  table_name: customer_cs_request
+  fields:
+  - id
+  - organization_id
+  - created_at
+  - updated_at
+  - status
+  - error_count
+  - owner_id
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: ba_cs_request
+  fields:
+  - id
+  - organization_id
+  - created_at
+  - updated_at
+  - status
+  - error_count
+  - owner_id
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                INT8        NOT NULL   ENCODE ZSTD,
+      organization_id   INT8        NOT NULL   ENCODE ZSTD,
+      created_at        TIMESTAMP   NOT NULL   ENCODE ZSTD,
+      updated_at        TIMESTAMP   NOT NULL   ENCODE ZSTD,
+      status            INT4        NOT NULL   ENCODE ZSTD,
+      error_count       INT8        NOT NULL   ENCODE ZSTD,
+      owner_id          INT8        NOT NULL   ENCODE ZSTD
+    )
+    DISTSTYLE ALL;
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id

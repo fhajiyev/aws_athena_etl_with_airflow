@@ -1,0 +1,85 @@
+#  For
+#
+#
+---
+pipeline_key: ba_l_creative
+pipeline_type: mysql_s3_athena
+pipeline_dag_configs:
+  start_date: 2019-11-01 00:00:00
+  schedule_interval: "0 * * * *"
+mysql:
+  conn_id: buzzad_mysql
+  table_name: creatives
+  increment_key: created_at
+  increment_key_type: timestamp
+  fields:
+    - id
+    - name
+    - lineitem_id
+    - width
+    - height
+    - icon
+    - image_url
+    - click_url
+    - creative_type
+    - is_enabled
+    - html
+    - layout_type
+    - background_image_url
+    - action_description
+    - call_to_action
+    - description
+    - short_action_description
+    - landing_type
+    - adchoice_url
+    - created_at
+    - updated_at
+    - ad_video_id
+    - is_deeplink
+    - ui_name
+s3:
+  bucket: prod-buzzvil-data-lake
+  prefix: buzzad/landing/creative/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzad-creative
+  data_format: json
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id                            INT,
+      name                          VARCHAR(100),
+      lineitem_id                   BIGINT,
+      width                         INT,
+      height                        INT,
+      icon                          VARCHAR(512),
+      image_url                     VARCHAR(255),
+      click_url                     VARCHAR(1024),
+      creative_type                 SMALLINT,
+      is_enabled                    TINYINT,
+      html                          VARCHAR(65535),
+      layout_type                   SMALLINT,
+      background_image_url          VARCHAR(255),
+      action_description            VARCHAR(1024),
+      call_to_action                VARCHAR(63),
+      description                   VARCHAR(1024),
+      short_action_description      VARCHAR(1024),
+      landing_type                  SMALLINT,
+      adchoice_url                  VARCHAR(1024),
+      created_at                    TIMESTAMP,
+      updated_at                    TIMESTAMP,
+      ad_video_id                   INT,
+      is_deeplink                   TINYINT,
+      ui_name                       VARCHAR(100)
+    )
+    PARTITIONED BY (partition_timestamp TIMESTAMP)
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'ignore.malformed.json'='true'
+    )
+    LOCATION '{location}';
+  database: prod_buzzad
+  table: l_creative
+  location: s3://prod-buzzvil-data-lake/buzzad/landing/creative
+  partition:
+    name: partition_timestamp
+    type: hourly

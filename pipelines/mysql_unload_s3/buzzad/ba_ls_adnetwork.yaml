@@ -1,0 +1,67 @@
+# CREATE TABLE `adnetworks` (
+#   `id` bigint(20) NOT NULL AUTO_INCREMENT,
+#   `adnetwork_name` varchar(50) NOT NULL,
+#   `created_at` datetime NOT NULL,
+#   `updated_at` datetime NOT NULL,
+#   `countries` varchar(255) NOT NULL,
+#   `list_update_active` tinyint(1) NOT NULL,
+#   `list_update_interval` smallint(5) unsigned NOT NULL,
+#   `list_update_last` datetime NOT NULL,
+#   `list_update_retry` smallint(5) unsigned NOT NULL,
+#   `list_update_support` tinyint(1) NOT NULL,
+#   `extra_data` longtext NOT NULL,
+#   `is_active` tinyint(1) NOT NULL,
+#   `creative_type` smallint(5) unsigned NOT NULL,
+#   `lineitem_type` varchar(1) NOT NULL,
+#   PRIMARY KEY (`id`)
+# ) ENGINE=InnoDB AUTO_INCREMENT=1003 DEFAULT CHARSET=utf8;
+
+---
+pipeline_key: ba_ls_adnetwork
+pipeline_type: mysql_unload_s3
+pipeline_dag_configs:
+  start_date: 2020-09-01 17:00:00
+  schedule_interval: "0 17 * * *"
+mysql:
+  conn_id: buzzad_mysql
+  table_name: adnetworks
+  increment_key: id
+  increment_key_type: dump
+  fields:
+  - id
+  - adnetwork_name
+  - created_at
+  - updated_at
+  - countries
+  - is_active
+  - creative_type
+  - lineitem_type
+s3:
+  bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  prefix: buzzad/landing_snapshot/adnetwork/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzad_adnetwork
+  data_format: parquet
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id               INT,
+      adnetwork_name   VARCHAR(255),
+      created_at       TIMESTAMP,
+      updated_at       TIMESTAMP,
+      countries        VARCHAR(255),
+      is_active        BOOLEAN,
+      creative_type    INT,
+      lineitem_type    VARCHAR(1)
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY");
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzad"
+  table: ls_adnetwork
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/buzzad/landing_snapshot/adnetwork"
+  partition:
+    key: partition_timestamp
+    value: "{{execution_date.strftime('%Y-%m-%d %H:00:00')}}"
+    subdir: "year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}"
+

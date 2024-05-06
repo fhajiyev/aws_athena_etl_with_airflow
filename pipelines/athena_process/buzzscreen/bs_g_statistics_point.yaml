@@ -1,0 +1,139 @@
+---
+pipeline_key: bs_g_statistics_point
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-07-21 18:00:00
+  schedule_interval: "0 * * * *"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency
+    - trigger: sla_miss
+      args:
+        channel: data-emergency
+    - trigger: retry
+      args:
+        channel: data-warning
+
+# latest_snapshot은 upstream dag로 두지 않음
+upstream_dependencies:
+  - dag_id: athena_view_bs_g_vw_point
+    timedelta_hours: 6
+  - dag_id: athena_view_pointsvc_g_vw_point
+    timedelta_hours: 6
+
+sensor_soft_fail: false
+
+athena:
+  workgroup: buzzscreen
+  # Below time configs are needed to set time prefix for S3 directory.
+  year:  "{{ (execution_date - macros.timedelta(hours=6)).strftime('%Y') }}"
+  month: "{{ (execution_date - macros.timedelta(hours=6)).strftime('%m') }}"
+  day:   "{{ (execution_date - macros.timedelta(hours=6)).strftime('%d') }}"
+  hour:  "{{ (execution_date - macros.timedelta(hours=6)).strftime('%H') }}"
+
+  # https://github.com/Buzzvil/buzzscreen/blob/a0236d6e0ec75949c543bc31654e4ca9d048468e/statistics/management/commands/update_statistics_point.py#L79
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+      format = 'PARQUET',
+      parquet_compression = 'SNAPPY',
+      external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS WITH grouped_point AS (
+      SELECT
+        P.data_at               AS data_at,
+        P.unit_id               AS unit_id,
+        P.campaign_id           AS campaign_id,
+        SUM(P.reward_count)     AS reward_count,
+        SUM(P.reward_sum)       AS reward_sum,
+        SUM(P.base_reward_sum)  AS base_reward_sum
+      FROM
+        (
+          SELECT
+            DATE_TRUNC('hour', created_at)                              AS data_at,
+            unit_id                                                     AS unit_id,
+            CASE WHEN point_type = 'imp' THEN campaign_id ELSE 1 END    AS campaign_id,
+            COUNT(1)                                                    AS reward_count,
+            SUM(amount)                                                 AS reward_sum,
+            SUM(base_reward)                                            AS base_reward_sum
+          FROM
+            {{{{ var.value.get('server_env', 'prod') }}}}_buzzscreen.g_vw_point
+          WHERE
+            partition_timestamp >= TIMESTAMP '{{{{ (execution_date - macros.timedelta(hours=6)).strftime('%Y-%m-%d %H:00:00') }}}}' AND
+            partition_timestamp < TIMESTAMP '{{{{ (next_execution_date - macros.timedelta(hours=6)).strftime('%Y-%m-%d %H:00:00') }}}}' AND
+            created_at >= TIMESTAMP '{{{{ (execution_date - macros.timedelta(hours=6)).strftime('%Y-%m-%d %H:00:00') }}}}' AND
+            created_at < TIMESTAMP '{{{{ (next_execution_date - macros.timedelta(hours=6)).strftime('%Y-%m-%d %H:00:00') }}}}' AND
+            requested = TRUE
+          GROUP BY 1, 2, 3
+        UNION ALL
+          SELECT
+            DATE_TRUNC('hour', created_at)                              AS data_at,
+            unit_id                                                     AS unit_id,
+            CASE
+              WHEN resource_type = 'ad' THEN resource_id + 1000000000
+              WHEN resource_type = 'article' THEN resource_id
+              ELSE 1 END                                                AS campaign_id,
+            COUNT(1)                                                    AS reward_count,
+            SUM(-amount)                                                AS reward_sum,    -- redeem point는 언제나 0보다 작은 amount를 가짐
+            0                                                           AS base_reward_sum
+          FROM
+            {{{{ var.value.get('server_env', 'prod') }}}}_pointsvc.g_vw_point
+          WHERE
+            partition_timestamp >= TIMESTAMP '{{{{ (execution_date - macros.timedelta(hours=6)).strftime('%Y-%m-%d %H:00:00') }}}}' AND
+            partition_timestamp < TIMESTAMP '{{{{ (next_execution_date - macros.timedelta(hours=6)).strftime('%Y-%m-%d %H:00:00') }}}}' AND
+            created_at >= TIMESTAMP '{{{{ (execution_date - macros.timedelta(hours=6)).strftime('%Y-%m-%d %H:00:00') }}}}' AND
+            created_at < TIMESTAMP '{{{{ (next_execution_date - macros.timedelta(hours=6)).strftime('%Y-%m-%d %H:00:00') }}}}' AND
+            amount < 0 AND                              -- redeem point
+            redeem_status = 'succeeded' AND             -- postback succeeded point
+            resource_type in ('ad', 'article') AND
+            event_type = 'landed'
+          GROUP BY 1, 2, 3
+        ) AS P
+      GROUP BY 1, 2, 3
+    )
+    SELECT
+      P.data_at                                                   AS data_at,
+      P.unit_id                                                   AS unit_id,
+      P.campaign_id                                               AS campaign_id,
+      COALESCE(C.organization_id, COALESCE(L.organization_id, 1)) AS campaign_organization_id,
+      COALESCE(C.name, COALESCE(L.item_name, ''))                      AS campaign_name,
+      SUM(P.reward_count)                                         AS reward_count,
+      SUM(P.reward_sum)                                           AS reward_sum,
+      SUM(P.base_reward_sum)                                      AS base_reward_sum
+    FROM grouped_point P
+      LEFT JOIN {{{{ var.value.get('server_env', 'prod') }}}}_buzzscreen.l_vw_content_campaigns C ON
+        P.campaign_id <= 1000000000 AND
+        P.campaign_id = C.id
+      LEFT JOIN {{{{ var.value.get('server_env', 'prod') }}}}_buzzad.l_vw_lineitem L ON
+        P.campaign_id > 1000000000 AND
+        P.campaign_id - 1000000000 = L.id
+    GROUP BY 1, 2, 3, 4, 5
+  output_bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  output_prefix: buzzscreen/gold/statistics_point/year={year}/month={month}/day={day}/hour={hour}
+  file_key: bs_g_statistics_point
+  file_extension: parquet
+
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzscreen"
+  table: g_statistics_point
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/buzzscreen/gold/statistics_point"
+  partition:
+    name: partition_timestamp
+    value: "{{ (execution_date - macros.timedelta(hours=6)).strftime('%Y-%m-%d %H:00:00') }}"
+    location: "s3://{{{{ var.value.get('server_env', 'prod') }}}}-buzzvil-data-lake/buzzscreen/gold/statistics_point/year={year}/month={month}/day={day}/hour={hour}"
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+        data_at                   TIMESTAMP,
+        unit_id                   BIGINT,
+        campaign_id               BIGINT,
+        campaign_organization_id  INT,
+        campaign_name             VARCHAR(300),
+        reward_count              BIGINT,
+        reward_sum                BIGINT,
+        base_reward_sum           BIGINT
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    tblproperties("parquet.compress"="SNAPPY");

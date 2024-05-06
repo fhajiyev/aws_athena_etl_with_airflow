@@ -1,0 +1,93 @@
+---
+pipeline_key: ba_ad_group_sales_efficiency_create_view
+pipeline_type: redshift_query
+pipeline_dag_configs:
+  start_date: 2020-04-27 22:00:00
+  schedule_interval: "0 * * * *"
+redshift:
+  query: |
+    BEGIN;
+    DROP MATERIALIZED VIEW IF EXISTS ba_ad_group_sales_efficiency;
+    CREATE MATERIALIZED VIEW ba_ad_group_sales_efficiency AS
+
+    WITH
+    stats AS (
+    SELECT
+        DATE_TRUNC('day', s.data_at + INTERVAL '9 hours') AS date_at,
+        s.unit_id,
+        s.lineitem_id,
+        l.item_name,
+        l.ad_group_id,
+        SUM(s.impression_count) AS imps,
+        SUM(s.click_count) AS clicks,
+        CASE
+            WHEN imps = 0 THEN 0
+            ELSE ROUND(clicks::FLOAT / imps::FLOAT * 100,2)
+        END AS ctr,
+        SUM(s.sales_total) AS spent_budget
+    FROM
+        ba_statistics_unit_creative s
+    INNER JOIN
+        ba_lineitem l ON l.id = s.lineitem_id
+    WHERE
+        s.data_at >= DATE_TRUNC('month', CONVERT_TIMEZONE('Asia/Seoul', TIMESTAMP'{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}')) - INTERVAL '2 month'
+    GROUP BY
+        1, 2, 3, 4, 5
+    ),
+    events AS (
+    SELECT
+        DATE_TRUNC('day', e.event_time + INTERVAL '9 hours') AS date_at,
+        e.unit_id,
+        l.ad_group_id,
+        e.lineitem_id,
+        l.item_name,
+        COUNT(*) AS event_count,
+        SUM(NVL(e.event_revenue, 0)) AS revenue
+    FROM
+        ba_user_event e
+    INNER JOIN
+        ba_lineitem l ON l.id = e.lineitem_id
+    INNER JOIN
+        ba_click c ON c.click_id = e.click_id AND e.event_time < c.created_at::TIMESTAMP + INTERVAL '1 day'
+    WHERE
+        e.event_type = 'purchase'
+        AND c.created_at >= DATE_TRUNC('month', CONVERT_TIMEZONE('Asia/Seoul', TIMESTAMP'{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}')) - INTERVAL '2 month'
+        AND e.event_time >= DATE_TRUNC('month', CONVERT_TIMEZONE('Asia/Seoul', TIMESTAMP'{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}')) - INTERVAL '2 month'
+    GROUP BY
+        1, 2, 3, 4, 5
+    )
+    SELECT
+        s.date_at,
+        s.unit_id,
+        u.name AS unit_name,
+        s.lineitem_id,
+        s.item_name AS lineitem_name,
+        s.ad_group_id,
+        s.imps,
+        s.clicks,
+        s.ctr,
+        s.spent_budget,
+        NVL(e.event_count, 0) AS event_count,
+        CASE
+            WHEN NVL(e.event_count,0) > 0 THEN s.spent_budget / NVL(e.event_count,0)
+            ELSE 0
+        END AS cost_per_event,
+        CASE
+            WHEN s.clicks > 0 THEN NVL(e.event_count, 0) / s.clicks
+            ELSE 0
+        END AS event_over_clicks,
+        NVL(e.revenue, 0) AS purchase_revenue,
+        CASE
+            WHEN s.spent_budget > 0 THEN ROUND(100.0 * e.revenue / s.spent_budget, 2)
+            ELSE 0
+        END AS ROAS
+    FROM
+        stats s
+    INNER JOIN ba_unit u ON u.id = s.unit_id
+    LEFT JOIN events e ON
+        e.unit_id = s.unit_id AND
+        e.lineitem_id = s.lineitem_id AND
+        e.date_at = s.date_at
+    ;
+
+    END;

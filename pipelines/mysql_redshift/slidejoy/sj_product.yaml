@@ -1,0 +1,77 @@
+---
+pipeline_key: sj_product
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: slidejoy_mysql
+  table_name: tbl_product
+  fields:
+  - productId
+  - name
+  - shortName
+  - priceTier
+  - caratPrice
+  - commissionRate
+  - discountOrPayback
+  - iconUrl
+  - description
+  - storeId
+  - gyftId
+  - tangoId
+  - cysendId
+  - visible
+  - testOnly
+  - updateDate
+  increment_key: updateDate
+  increment_key_type: timestamp
+  unique_key_list:
+  - productId
+
+redshift:
+  table_name: sj_product
+  fields:
+  - productId
+  - name
+  - shortName
+  - priceTier
+  - caratPrice
+  - commissionRate
+  - discountOrPayback
+  - iconUrl
+  - description
+  - storeId
+  - gyftId
+  - tangoId
+  - cysendId
+  - visible
+  - testOnly
+  - updateDate
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      productId           INT8           NOT NULL                        ENCODE ZSTD,
+      name                VARCHAR(100)   NOT NULL                        ENCODE ZSTD,
+      shortName           VARCHAR(16)    NOT NULL                        ENCODE ZSTD,
+      priceTier           INT8           DEFAULT NULL                    ENCODE ZSTD,
+      caratPrice          INT8           DEFAULT NULL                    ENCODE ZSTD,
+      commissionRate      DECIMAL(6,2)   NOT NULL       DEFAULT '0.00'   ENCODE ZSTD,
+      discountOrPayback   INT2                          DEFAULT '0'      ENCODE ZSTD,
+      iconUrl             VARCHAR(256)   NOT NULL                        ENCODE ZSTD,
+      description         VARCHAR(256)   DEFAULT NULL                    ENCODE LZO,
+      storeId             INT8           NOT NULL                        ENCODE ZSTD,
+      gyftId              INT8           DEFAULT NULL                    ENCODE ZSTD,
+      tangoId             VARCHAR(32)    DEFAULT NULL                    ENCODE ZSTD,
+      cysendId            VARCHAR(8)     DEFAULT NULL                    ENCODE ZSTD,
+      visible             INT2           NOT NULL       DEFAULT '1'      ENCODE ZSTD,
+      testOnly            INT2           NOT NULL       DEFAULT '0'      ENCODE ZSTD,
+      updateDate          TIMESTAMP      NOT NULL                        ENCODE LZO
+    )
+    DISTSTYLE ALL
+    SORTKEY(productId, updateDate)
+    ;
+  increment_key: updateDate
+  increment_key_type: timestamp
+  unique_key_list:
+  - productId

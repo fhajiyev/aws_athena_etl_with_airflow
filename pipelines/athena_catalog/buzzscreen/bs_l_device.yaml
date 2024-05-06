@@ -1,0 +1,47 @@
+---
+pipeline_key: bs_l_device
+pipeline_type: athena_catalog
+pipeline_dag_configs:
+  start_date: 2020-02-13 09:00:00
+  schedule_interval: "0 * * * *"
+
+athena:
+  database: prod_buzzscreen
+  table: l_device
+  location: s3://prod-buzzvil-data-lake/buzzscreen/landing/device
+  partition:
+    name: partition_timestamp
+    location: s3://prod-buzzvil-data-lake/buzzscreen/landing/device/year={year}/month={month}/day={day}/hour={hour}
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id                              BIGINT,
+      app_id                          BIGINT,
+      unit_device_token               VARCHAR(255),
+      ifa                             VARCHAR(45),
+      carrier                         VARCHAR(32),
+      device_name                     VARCHAR(20),
+      resolution                      VARCHAR(11),
+      year_of_birth                   INT,
+      sdk_version                     INT,
+      sex                             VARCHAR(1),
+      package_name                    VARCHAR(255),
+      signup_ip                       BIGINT,
+      serial_number                   VARCHAR(45),
+      unit_id                         BIGINT,
+      country                         VARCHAR(2),
+      message                         VARCHAR(7),
+      date_joined                     VARCHAR(45),
+      app_version                     BIGINT,
+      is_in_battery_optimizations     BOOLEAN,
+      is_background_restricted        BOOLEAN,
+      has_overlay_permission          BOOLEAN,
+      level                           VARCHAR(31),
+      msg                             VARCHAR(31),
+      time                            VARCHAR(45)
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1'
+    ) LOCATION '{location}';

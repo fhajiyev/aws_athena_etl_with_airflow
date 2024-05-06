@@ -1,0 +1,80 @@
+---
+pipeline_key: ba_fill
+pipeline_type: s3_redshift_sync
+pipeline_dag_configs:
+  start_date: 2019-05-29 00:00:00
+  schedule_interval: "@hourly"
+delay_seconds: 600
+
+s3:
+  bucket: buzzvil-log-oregon
+  prefix: prod/buzzad/buzzad-django-fill
+redshift:
+  table_name: ba_fill
+  fields:
+  - filled
+  - position
+  - request_id
+  - viewer_id
+  - publisher_user_id
+  - client_ip
+  - country
+  - sex
+  - age
+  - relationship
+  - region
+  - carrier
+  - device
+  - network_type
+  - unit_id
+  - unit_type
+  - lineitem_id
+  - item_type
+  - revenue_type
+  - unit_price
+  - objective
+  - is_incentive
+  - adnetwork_id
+  - created_at
+  unique_key_list:
+  - created_at
+  - request_id
+  deduplicate_key_list:
+  - created_at
+  - request_id
+  increment_key: created_at
+  increment_key_type: timestamp
+  copy_method: incremental
+  copy_option: jsonpath_error_max_100
+  jsonpath_location: 's3://buzzvil-log-oregon/prod/buzzad/buzzad-django-fill/jsonpaths/ba_fill.jsonpaths'
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+        filled              BOOLEAN         NOT NULL       ENCODE ZSTD,
+        position            INT4            NOT NULL       ENCODE ZSTD,
+        request_id          VARCHAR(64)     NOT NULL       ENCODE ZSTD,
+        viewer_id           VARCHAR(64)     NOT NULL       ENCODE ZSTD,
+        publisher_user_id   VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        client_ip           VARCHAR(16)     NOT NULL       ENCODE ZSTD,
+        country             CHAR(2)         DEFAULT NULL   ENCODE ZSTD,
+        sex                 CHAR(1)         DEFAULT NULL   ENCODE ZSTD,
+        age                 INT8            DEFAULT NULL   ENCODE ZSTD,
+        relationship        CHAR(1)         DEFAULT NULL   ENCODE ZSTD,
+        region              VARCHAR(128)    DEFAULT NULL   ENCODE ZSTD,
+        carrier             VARCHAR(128)    DEFAULT NULL   ENCODE ZSTD,
+        device              VARCHAR(20)     DEFAULT NULL   ENCODE ZSTD,
+        network_type        VARCHAR(8)      DEFAULT NULL   ENCODE ZSTD,
+        unit_id             INT8            NOT NULL       ENCODE ZSTD,
+        unit_type           VARCHAR(10)     NOT NULL       ENCODE ZSTD,
+        lineitem_id         INT8            DEFAULT NULL   ENCODE ZSTD,
+        item_type           VARCHAR(10)     DEFAULT NULL   ENCODE ZSTD,
+        revenue_type        VARCHAR(10)     DEFAULT NULL   ENCODE ZSTD,
+        unit_price          DECIMAL(18,9)   DEFAULT NULL   ENCODE ZSTD,
+        objective           VARCHAR(30)     DEFAULT NULL   ENCODE ZSTD,
+        is_incentive        VARCHAR(1)      DEFAULT NULL   ENCODE ZSTD,
+        adnetwork_id        INT8            DEFAULT NULL   ENCODE ZSTD,
+        created_at          TIMESTAMP       NOT NULL       ENCODE ZSTD
+    )
+    DISTKEY (viewer_id)
+    SORTKEY (created_at)
+    ;

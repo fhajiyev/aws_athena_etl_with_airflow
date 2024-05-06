@@ -1,0 +1,69 @@
+#  For
+#
+#
+---
+pipeline_key: bs_content_entity
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: buzzscreen_mysql
+  table_name: content_entity
+  fields:
+  - id
+  - content_id
+  - source
+  - entity_type
+  - entity_name
+  - sentiment
+  - relevance
+  - count
+  - emotion
+  - confidence
+  - disambiguation
+  - created_at
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: bs_content_entity
+  fields:
+  - id
+  - content_id
+  - source
+  - entity_type
+  - entity_name
+  - sentiment
+  - relevance
+  - count
+  - emotion
+  - confidence
+  - disambiguation
+  - created_at
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                      INT8            NOT NULL        ENCODE ZSTD,
+      content_id              INT8            NOT NULL        ENCODE ZSTD,
+      source                  VARCHAR(255)    NOT NULL        ENCODE ZSTD,
+      entity_type             VARCHAR(255)    NOT NULL        ENCODE ZSTD,
+      entity_name             VARCHAR(255)    NOT NULL        ENCODE ZSTD,
+      sentiment               FLOAT           NOT NULL        ENCODE ZSTD,
+      relevance               FLOAT           NOT NULL        ENCODE ZSTD,
+      count                   INT2            NOT NULL        ENCODE ZSTD,
+      emotion                 VARCHAR(1023)   NOT NULL        ENCODE LZO,
+      confidence              FLOAT           DEFAULT NULL    ENCODE ZSTD,
+      disambiguation          VARCHAR(4095)   NOT NULL        ENCODE LZO,
+      created_at              TIMESTAMP       NOT NULL        ENCODE ZSTD,
+      PRIMARY KEY(id)
+    )
+    DISTKEY (content_id)
+    SORTKEY (id)
+    ;
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id

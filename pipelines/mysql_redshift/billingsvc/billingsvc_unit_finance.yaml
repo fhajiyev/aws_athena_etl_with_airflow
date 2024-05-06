@@ -1,0 +1,107 @@
+---
+pipeline_key: billingsvc_unit_finance
+pipeline_type: mysql_redshift
+incremental_sync: False
+
+mysql:
+  conn_id: billingsvc_mysql
+  table_name: unit_finance
+  increment_key: id
+  increment_key_type: numeric
+  fields:
+  - id
+  - data_at
+  - unit_id
+  - country
+  - revenue_display_direct
+  - revenue_display_owner
+  - revenue_display_external
+  - revenue_action_direct
+  - revenue_action_owner
+  - revenue_action_external
+  - revenue_adnetwork_static
+  - revenue_adnetwork_dynamic
+  - cost_action_direct
+  - cost_action_owner
+  - cost_action_external
+  - cost_adnetwork_static
+  - cost_adnetwork_dynamic
+  - cost_imp_direct
+  - cost_imp_owner
+  - cost_imp_external
+  - cost_base
+  - cost_wel
+  - cost_bch
+  - cost_ref
+  - updated_at
+  - created_at
+  unique_key_list:
+  - id
+redshift:
+  table_name: billingsvc_unit_finance
+  fields:
+  - id
+  - data_at
+  - unit_id
+  - country
+  - revenue_display_direct
+  - revenue_display_owner
+  - revenue_display_external
+  - revenue_action_direct
+  - revenue_action_owner
+  - revenue_action_external
+  - revenue_adnetwork_static
+  - revenue_adnetwork_dynamic
+  - cost_action_direct
+  - cost_action_owner
+  - cost_action_external
+  - cost_adnetwork_static
+  - cost_adnetwork_dynamic
+  - cost_imp_direct
+  - cost_imp_owner
+  - cost_imp_external
+  - cost_base
+  - cost_wel
+  - cost_bch
+  - cost_ref
+  - updated_at
+  - created_at
+  copy_method: replace
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                          BIGINT          ENCODE AZ64,
+      data_at                     TIMESTAMP       ENCODE AZ64,
+      unit_id                     BIGINT          ENCODE AZ64,
+      country                     VARCHAR(50)     ENCODE ZSTD,
+      revenue_display_direct      DECIMAL(27,9)   ENCODE AZ64,
+      revenue_display_owner       DECIMAL(27,9)   ENCODE AZ64,
+      revenue_display_external    DECIMAL(27,9)   ENCODE AZ64,
+      revenue_action_direct       DECIMAL(27,9)   ENCODE AZ64,
+      revenue_action_owner        DECIMAL(27,9)   ENCODE AZ64,
+      revenue_action_external     DECIMAL(27,9)   ENCODE AZ64,
+      revenue_adnetwork_static    DECIMAL(27,9)   ENCODE AZ64,
+      revenue_adnetwork_dynamic   DECIMAL(27,9)   ENCODE AZ64,
+      cost_action_direct          BIGINT          ENCODE AZ64,
+      cost_action_owner           BIGINT          ENCODE AZ64,
+      cost_action_external        BIGINT          ENCODE AZ64,
+      cost_adnetwork_static       BIGINT          ENCODE AZ64,
+      cost_adnetwork_dynamic      BIGINT          ENCODE AZ64,
+      cost_imp_direct             BIGINT          ENCODE AZ64,
+      cost_imp_owner              BIGINT          ENCODE AZ64,
+      cost_imp_external           BIGINT          ENCODE AZ64,
+      cost_base                   BIGINT          ENCODE AZ64,
+      cost_wel                    BIGINT          ENCODE AZ64,
+      cost_bch                    BIGINT          ENCODE AZ64,
+      cost_ref                    BIGINT          ENCODE AZ64,
+      updated_at                  TIMESTAMP       ENCODE AZ64,
+      created_at                  TIMESTAMP       ENCODE AZ64,
+      PRIMARY KEY(id)
+    )
+    DISTSTYLE ALL
+    SORTKEY(id)
+    ;
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id

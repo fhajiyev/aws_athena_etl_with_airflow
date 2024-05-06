@@ -1,0 +1,12 @@
+pipeline_key: segmentsvc_g_dim_tag_installed_apps
+pipeline_type: emr_spark_transform
+pipeline_dag_configs:
+  start_date: 2020-02-26 00:00:00
+  schedule_interval: "@hourly"
+
+job_flow:
+  overrides: {}
+
+steps:
+  - name: "Upsert Installed Apps"
+    script_location: "s3://buzzvil-airflow/dev/emr/scripts/segmentsvc/upsert_installed_apps.py"

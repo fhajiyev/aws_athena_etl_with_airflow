@@ -1,0 +1,67 @@
+#  
+# 
+# 
+---
+pipeline_key: ba_ad_group
+pipeline_type: mysql_redshift
+incremental_sync: False
+mysql:
+  conn_id: buzzad_mysql
+  table_name: ad_groups
+  fields:
+  - id
+  - name
+  - budget
+  - currency
+  - salesforce_record_id
+  - hide_impression
+  - organization_id
+  - owner_id
+  - sales_manager_id
+  - agent_fee_rate
+  - created_at
+  - updated_at
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: ba_ad_group
+  fields:
+  - id
+  - name
+  - budget
+  - currency
+  - salesforce_record_id
+  - hide_impression
+  - organization_id
+  - owner_id
+  - sales_manager_id
+  - agent_fee_rate
+  - created_at
+  - updated_at
+  copy_method: replace
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                     INT8            NOT NULL       ENCODE ZSTD,
+      name                   VARCHAR(300)    NOT NULL       ENCODE LZO,
+      budget                 DECIMAL(19,9)   NOT NULL       ENCODE ZSTD,
+      currency               VARCHAR(3)      NOT NULL       ENCODE ZSTD,
+      salesforce_record_id   VARCHAR(600)    NULL           ENCODE LZO,
+      hide_impression        INT2            NOT NULL       ENCODE ZSTD,
+      organization_id        INT8            NOT NULL       ENCODE ZSTD,
+      owner_id               INT8            NOT NULL       ENCODE ZSTD,
+      sales_manager_id       INT8            NULL           ENCODE ZSTD,
+      agent_fee_rate         DECIMAL(10,3)   DEFAULT NULL   ENCODE ZSTD,
+      created_at             TIMESTAMP       NOT NULL       ENCODE ZSTD,
+      updated_at             TIMESTAMP       NOT NULL       ENCODE ZSTD,
+      PRIMARY KEY(id)
+    )
+    DISTSTYLE ALL
+    ;
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id

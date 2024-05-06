@@ -1,0 +1,95 @@
+---
+pipeline_key: bs_device
+pipeline_type: redshift_transform_load
+pipeline_dag_configs:
+  start_date: 2019-07-22 00:00:00
+  schedule_interval: "0 * * * *"
+  depends_on_past: False
+transform:
+  select_query: |
+    SELECT
+      id,
+      unit_id,
+      unit_device_token,
+      ifa,
+      device_name,
+      year_of_birth,
+      sex,
+      carrier,
+      region,
+      signup_ip,
+      date_joined,
+      created_at,
+      sdk_version,
+      country,
+      package_name,
+      serial_number,
+      app_id,
+      app_version,
+      is_in_battery_optimizations,
+      is_background_restricted,
+      has_overlay_permission
+    FROM
+      bs_device_staging
+  delete_query: |
+    DELETE FROM
+      bs_device_staging;
+
+redshift:
+  table_name: bs_device
+  fields:
+  - id
+  - unit_id
+  - unit_device_token
+  - ifa
+  - device_name
+  - year_of_birth
+  - sex
+  - carrier
+  - region
+  - signup_ip
+  - date_joined
+  - created_at
+  - sdk_version
+  - country
+  - package_name
+  - serial_number
+  - app_id
+  - app_version
+  - is_in_battery_optimizations
+  - is_background_restricted
+  - has_overlay_permission
+  unique_key_list:
+  - id
+  increment_key: id
+  increment_key_type: numeric
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                            INT4           NOT NULL          ENCODE DELTA,
+      unit_id                       INT8           NOT NULL          ENCODE BYTEDICT,
+      unit_device_token             VARCHAR(255)    NOT NULL          ENCODE LZO,
+      ifa                           VARCHAR(45)    NOT NULL          ENCODE LZO,
+      device_name                   VARCHAR(20)    NULL DEFAULT ''   ENCODE BYTEDICT,
+      year_of_birth                 INT4           NULL              ENCODE BYTEDICT,
+      sex                           VARCHAR(1)     NULL              ENCODE BYTEDICT,
+      carrier                       VARCHAR(32)    NULL              ENCODE BYTEDICT,
+      region                        VARCHAR(64)    NULL              ENCODE LZO,
+      signup_ip                     INT8           NULL              ENCODE LZO,
+      date_joined                   TIMESTAMP      NOT NULL          ENCODE LZO,
+      created_at                    TIMESTAMP      NOT NULL          ENCODE LZO,
+      sdk_version                   INT8           NULL              ENCODE ZSTD,
+      country                       VARCHAR(2)     NULL              ENCODE ZSTD,
+      package_name                  VARCHAR(255)   NULL              ENCODE ZSTD,
+      serial_number                 VARCHAR(45)    NULL              ENCODE ZSTD,
+      app_id                        INT8           NOT NULL          ENCODE ZSTD,
+      app_version                   INT8           DEFAULT NULL      ENCODE ZSTD,
+      is_in_battery_optimizations   BOOLEAN        DEFAULT NULL      ENCODE ZSTD,
+      is_background_restricted      BOOLEAN        DEFAULT NULL      ENCODE ZSTD,
+      has_overlay_permission        BOOLEAN        DEFAULT NULL      ENCODE ZSTD,
+      PRIMARY KEY(id)
+    )
+    DISTKEY(id)
+    SORTKEY(id)
+    ;

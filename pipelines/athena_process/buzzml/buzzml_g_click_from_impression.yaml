@@ -1,0 +1,168 @@
+---
+pipeline_key: buzzml_g_click_from_impression
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-08-01 01:00:00
+  schedule_interval: "@hourly"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency-oracle
+    - trigger: sla_miss
+      args:
+        channel: data-emergency-oracle
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: athena_catalog_ba_l_lineitem
+    timedelta_hours: 1
+  - dag_id: athena_catalog_ba_l_impression
+    timedelta_hours: 1
+  - dag_id: redshift_s3_sync_ba_l_product
+    timedelta_hours: 1
+  - dag_id: athena_catalog_ba_l_click
+    timedelta_hours: 0
+
+sensor_soft_fail: false
+
+athena:
+  workgroup: oracle
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+          format = 'PARQUET',
+          parquet_compression = 'SNAPPY',
+          external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+      SELECT
+          CAST(imp_clk.viewer_id AS VARCHAR(64)) AS viewer_id,
+          CAST(imp_clk.allocation_id AS VARCHAR(64)) AS allocation_id,
+          CAST(imp_clk.lineitem_id AS BIGINT) AS lineitem_id,
+          CAST(imp_clk.unit_id AS BIGINT) AS unit_id,
+          CAST(imp_clk.product_id AS BIGINT) AS product_id,
+          CAST(pp.product_feed_id AS BIGINT) AS product_feed_id,
+          CAST(imp_clk.user_action AS VARCHAR(32)) AS user_action,
+          CAST(CASE WHEN imp_clk.clk_sum = 0 THEN false ELSE true END AS BOOLEAN) AS is_occurred,
+          CAST(CASE
+              WHEN lineitem.action_point > 0 THEN lineitem.revenue_type
+              WHEN lineitem.landing_point > 0 THEN 'click' ELSE 'none'
+          END AS VARCHAR(64)) AS reward_condition,
+          CAST(imp_clk.occurred_at AS VARCHAR(64)) AS occurred_at
+      FROM
+      (
+          SELECT
+              ARBITRARY(viewer_id) AS viewer_id,
+              allocation_id,
+              lineitem_id,
+              ARBITRARY(unit_id) AS unit_id,
+              ARBITRARY(product_id) AS product_id,
+              'click_from_impression' AS user_action,
+              SUM(is_click) AS clk_sum,
+              COUNT(is_click) AS imp_clk_sum,
+              MAX(time) AS occurred_at
+          FROM
+          (
+              SELECT
+                  ARBITRARY(viewer_id) AS viewer_id,
+                  allocation_id,
+                  lineitem_id,
+                  ARBITRARY(unit_id) AS unit_id,
+                  CAST(ARBITRARY(product_id) AS BIGINT) AS product_id,
+                  MAX(time) AS time,
+                  0 AS is_click
+              FROM
+                  prod_buzzad.l_impression
+              WHERE
+                  partition_timestamp    >= TIMESTAMP'{start_time}' - INTERVAL '1' HOUR
+                  AND partition_timestamp < TIMESTAMP'{end_time}'   - INTERVAL '1' HOUR
+              GROUP BY
+                  allocation_id, lineitem_id
+
+              UNION ALL
+
+              SELECT
+                  ARBITRARY(viewer_id) AS viewer_id,
+                  allocation_id,
+                  lineitem_id,
+                  ARBITRARY(unit_id) AS unit_id,
+                  CAST(ARBITRARY(product_id) AS BIGINT) AS product_id,
+                  MAX(time) AS time,
+                  1 AS is_click
+              FROM
+                  prod_buzzad.l_click
+              WHERE
+                  partition_timestamp    >= TIMESTAMP'{start_time}' - INTERVAL '1' HOUR
+                  AND partition_timestamp < TIMESTAMP'{end_time}'
+              GROUP BY
+                  allocation_id, lineitem_id
+          )
+          GROUP BY
+              allocation_id, lineitem_id
+      ) AS imp_clk
+      LEFT JOIN(
+          SELECT
+              id,
+              ARBITRARY(product_feed_id) AS product_feed_id
+          FROM
+              prod_buzzad.l_product
+          GROUP BY
+              id
+      ) AS pp
+        ON imp_clk.product_id = pp.id
+      LEFT JOIN(
+          SELECT
+              id,
+              landing_point,
+              action_point,
+              revenue_type
+          FROM
+              prod_buzzad.l_lineitem
+          WHERE
+              partition_timestamp = TIMESTAMP'{start_time}' - INTERVAL '1' HOUR
+      ) AS lineitem
+        ON imp_clk.lineitem_id = lineitem.id
+      -- At least one impression occurred.
+      WHERE
+          imp_clk_sum > clk_sum
+    );
+
+  output_bucket: prod-buzzvil-data-lake
+  output_prefix: buzzml/gold/click_from_impression/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzml_g_click_from_impression
+  file_extension: parquet
+
+  database: prod_buzzml
+  table: g_click_from_impression
+  location: s3://prod-buzzvil-data-lake/buzzml/gold/click_from_impression
+
+  partition:
+    name: partition_timestamp
+    value: "{{ (execution_date - macros.timedelta(hours=1)).strftime('%Y-%m-%d %H:00:00') }}"
+    location: s3://prod-buzzvil-data-lake/buzzml/gold/click_from_impression/year={year}/month={month}/day={day}/hour={hour}
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      viewer_id                VARCHAR(64),
+      allocation_id            VARCHAR(64),
+      lineitem_id              BIGINT,
+      unit_id                  BIGINT,
+      product_id               BIGINT,
+      product_feed_id          BIGINT,
+      user_action              VARCHAR(32),
+      is_occurred              BOOLEAN,
+      reward_condition         VARCHAR(64),
+      occurred_at              VARCHAR(64)
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    tblproperties("parquet.compress"="SNAPPY");
+
+  # Below time configs are needed to set time prefix for S3 directory.
+  year:  "{{ (execution_date - macros.timedelta(hours=1)).strftime('%Y') }}"
+  month: "{{ (execution_date - macros.timedelta(hours=1)).strftime('%m') }}"
+  day:   "{{ (execution_date - macros.timedelta(hours=1)).strftime('%d') }}"
+  hour:  "{{ (execution_date - macros.timedelta(hours=1)).strftime('%H') }}"

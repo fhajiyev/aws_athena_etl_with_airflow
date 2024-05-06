@@ -1,0 +1,69 @@
+---
+pipeline_key: ba_user_event
+pipeline_type: s3_redshift_sync
+pipeline_dag_configs:
+  start_date: 2019-07-01 00:00:00
+  schedule_interval: "@hourly"
+delay_seconds: 600
+
+s3:
+  bucket: buzzvil-log-oregon
+  prefix: prod/buzzad/buzzad-general-user_event
+redshift:
+  table_name: ba_user_event
+  fields:
+  - tracker_id
+  - viewer_id
+  - event_source_id
+  - event_type
+  - event_name
+  - event_time
+  - event_revenue
+  - event_currency
+  - extra_segment1
+  - extra_segment2
+  - unit_id
+  - click_id
+  - lineitem_id
+  - creative_id
+  - package_name
+  - publisher_id
+  - sub_publisher_id
+  - created_at
+  - product_codes
+  unique_key_list:
+  - tracker_id
+  - viewer_id
+  - event_type
+  - event_time
+  increment_key: event_time
+  increment_key_type: timestamp
+  copy_method: incremental
+  copy_option: jsonpath
+  jsonpath_location: 's3://prod-buzzvil-data-lake/buzzad/jsonpaths/ba_user_event.jsonpaths'
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      tracker_id         INT4            NOT NULL       ENCODE ZSTD,
+      viewer_id          VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+      event_source_id    INT8            DEFAULT NULL   ENCODE ZSTD,
+      event_type         VARCHAR(60)     NOT NULL       ENCODE ZSTD,
+      event_name         VARCHAR(150)    DEFAULT NULL   ENCODE ZSTD,
+      event_time         TIMESTAMP       NOT NULL       ENCODE ZSTD,
+      event_revenue      DECIMAL(18,2)   DEFAULT NULL   ENCODE ZSTD,
+      event_currency     VARCHAR(12)     DEFAULT NULL   ENCODE ZSTD,
+      extra_segment1     VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+      extra_segment2     VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+      unit_id            INT8            DEFAULT NULL   ENCODE ZSTD,
+      click_id           VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+      lineitem_id        INT8            DEFAULT NULL   ENCODE ZSTD,
+      creative_id        INT8            DEFAULT NULL   ENCODE ZSTD,
+      package_name       VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+      publisher_id       VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+      sub_publisher_id   VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+      created_at         TIMESTAMP       NOT NULL       ENCODE ZSTD,
+      product_codes      VARCHAR(1024)   DEFAULT NULL   ENCODE ZSTD
+    )
+    DISTKEY (viewer_id)
+    SORTKEY (event_time)
+    ;

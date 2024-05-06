@@ -1,0 +1,114 @@
+# CREATE TABLE `unit_finance` (
+#   `id` int(11) NOT NULL AUTO_INCREMENT,
+#   `data_at` datetime(6) NOT NULL,
+#   `unit_id` bigint(20) NOT NULL,
+#   `country` varchar(50) DEFAULT NULL,
+#   `revenue_display_direct` decimal(27,9) NOT NULL,
+#   `revenue_display_owner` decimal(27,9) NOT NULL,
+#   `revenue_display_external` decimal(27,9) NOT NULL,
+#   `revenue_action_direct` decimal(27,9) NOT NULL,
+#   `revenue_action_owner` decimal(27,9) NOT NULL,
+#   `revenue_action_external` decimal(27,9) NOT NULL,
+#   `revenue_adnetwork_static` decimal(27,9) NOT NULL,
+#   `revenue_adnetwork_dynamic` decimal(27,9) NOT NULL,
+#   `cost_action_direct` int(11) NOT NULL,
+#   `cost_action_owner` int(11) NOT NULL,
+#   `cost_action_external` int(11) NOT NULL,
+#   `cost_adnetwork_static` int(11) NOT NULL,
+#   `cost_adnetwork_dynamic` int(11) NOT NULL,
+#   `cost_imp_direct` int(11) NOT NULL,
+#   `cost_imp_owner` int(11) NOT NULL,
+#   `cost_imp_external` int(11) NOT NULL,
+#   `cost_base` int(11) NOT NULL,
+#   `cost_wel` int(11) NOT NULL,
+#   `cost_bch` int(11) NOT NULL,
+#   `cost_ref` int(11) NOT NULL,
+#   `updated_at` datetime(6) NOT NULL,
+#   `created_at` datetime(6) NOT NULL,
+#   PRIMARY KEY (`id`)
+# ) ENGINE=InnoDB AUTO_INCREMENT=271926 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+---
+pipeline_key: billingsvc_ls_unit_finance
+pipeline_type: mysql_unload_s3
+pipeline_dag_configs:
+  start_date: 2020-09-16 17:00:00
+  schedule_interval: "0 17 * * *"
+mysql:
+  conn_id: billingsvc_mysql
+  table_name: unit_finance
+  increment_key: id
+  increment_key_type: numeric
+  fields:
+  - id
+  - data_at
+  - unit_id
+  - country
+  - revenue_display_direct
+  - revenue_display_owner
+  - revenue_display_external
+  - revenue_action_direct
+  - revenue_action_owner
+  - revenue_action_external
+  - revenue_adnetwork_static
+  - revenue_adnetwork_dynamic
+  - cost_action_direct
+  - cost_action_owner
+  - cost_action_external
+  - cost_adnetwork_static
+  - cost_adnetwork_dynamic
+  - cost_imp_direct
+  - cost_imp_owner
+  - cost_imp_external
+  - cost_base
+  - cost_wel
+  - cost_bch
+  - cost_ref
+  - updated_at
+  - created_at
+s3:
+  bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  prefix: billingsvc/landing_snapshot/unit_finance/year={year}/month={month}/day={day}/hour={hour}
+  file_key: billingsvc_ls_unit_finance
+  data_format: parquet
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id                          BIGINT,
+      data_at                     TIMESTAMP,
+      unit_id                     BIGINT,
+      country                     VARCHAR(50),
+      revenue_display_direct      DECIMAL(27,9),
+      revenue_display_owner       DECIMAL(27,9),
+      revenue_display_external    DECIMAL(27,9),
+      revenue_action_direct       DECIMAL(27,9),
+      revenue_action_owner        DECIMAL(27,9),
+      revenue_action_external     DECIMAL(27,9),
+      revenue_adnetwork_static    DECIMAL(27,9),
+      revenue_adnetwork_dynamic   DECIMAL(27,9),
+      cost_action_direct          BIGINT,
+      cost_action_owner           BIGINT,
+      cost_action_external        BIGINT,
+      cost_adnetwork_static       BIGINT,
+      cost_adnetwork_dynamic      BIGINT,
+      cost_imp_direct             BIGINT,
+      cost_imp_owner              BIGINT,
+      cost_imp_external           BIGINT,
+      cost_base                   BIGINT,
+      cost_wel                    BIGINT,
+      cost_bch                    BIGINT,
+      cost_ref                    BIGINT,
+      updated_at                  TIMESTAMP,
+      created_at                  TIMESTAMP
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY");
+  database: "{{ var.value.get('server_env', 'prod') }}_billingsvc"
+  table: ls_unit_finance
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/billingsvc/landing_snapshot/unit_finance"
+  partition:
+    key: partition_timestamp
+    value: "{{execution_date.strftime('%Y-%m-%d %H:00:00')}}"
+    subdir: "year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}"
+

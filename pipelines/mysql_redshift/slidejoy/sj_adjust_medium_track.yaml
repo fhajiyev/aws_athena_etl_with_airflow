@@ -1,0 +1,47 @@
+---
+pipeline_key: sj_adjust_medium_track
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: slidejoy_mysql
+  table_name: tbl_adjustMediumTrack
+  fields:
+  - advertisingId
+  - androidId
+  - source
+  - network
+  - campaign
+  - creationDate
+  increment_key: creationDate
+  increment_key_type: timestamp
+  unique_key_list:
+  - advertisingId
+
+redshift:
+  table_name: sj_adjust_medium_track
+  fields:
+  - advertisingId
+  - androidId
+  - source
+  - network
+  - campaign
+  - creationDate
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      advertisingId    VARCHAR(40)    NOT NULL       ENCODE ZSTD,
+      androidId        VARCHAR(20)    DEFAULT ''     ENCODE ZSTD,
+      source           VARCHAR(512)   DEFAULT NULL   ENCODE ZSTD,
+      network          VARCHAR(24)    DEFAULT NULL   ENCODE ZSTD,
+      campaign         VARCHAR(255)   DEFAULT NULL   ENCODE ZSTD,
+      creationDate     TIMESTAMP      NOT NULL       ENCODE ZSTD
+    )
+    DISTKEY(advertisingId)
+    SORTKEY(creationDate)
+    ;
+  increment_key: creationDate
+  increment_key_type: timestamp
+  unique_key_list:
+  - advertisingId

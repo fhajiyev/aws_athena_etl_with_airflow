@@ -1,0 +1,149 @@
+# Note that
+# - interval '5 hours' is actually "interval - 20 (execution time) + 24 (day offset) - 9( utc conversion)"
+# + interval '4 hours' is actually "interval - 20 (execution time) + 24 (day offset)"
+---
+pipeline_key: bs_statistics_user_point
+pipeline_type: redshift_transform_load
+pipeline_dag_configs:
+  start_date: 2020-01-01 20:00:00
+  schedule_interval: "0 20 * * *"
+transform:
+  delete_query: |
+    DELETE
+    FROM
+      bs_statistics_user_point
+    WHERE
+      date_at >= TIMESTAMP'{start_time}' + interval '4 HOURS' AND
+      date_at < TIMESTAMP'{end_time}' + interval '4 HOURS'
+  select_query: |
+    WITH
+      stat_list AS (
+        SELECT
+            DATE_TRUNC('day', CONVERT_TIMEZONE('Asia/Seoul', p.created_at)) AS date_at,
+            d.ifa,
+            p.unit_id,
+            CASE
+                -- classify special UNITS first
+                WHEN (UPPER(u.name) LIKE '%HONEY%' OR
+                      UPPER(u.name) LIKE '%SLIDEJOY%' OR
+                      UPPER(u.name) LIKE '%슬라이드조이%' OR
+                      UPPER(u.name) LIKE '%허니스크린%')                                 THEN 'BUZZVIL'
+                WHEN u.organization_id = 148                                          THEN 'OCB'
+                WHEN u.id = 814929650214424                                           THEN 'TMONEY'
+                WHEN u.id = 546150121635997                                           THEN 'MPOST'
+                WHEN u.id = 320712326152886                                           THEN 'CULTURE'
+                WHEN u.id = 533601017475164                                           THEN 'PONTA'
+                WHEN u.id IN (508293270306870, 291112716543436)                       THEN 'HPOINT'
+                WHEN u.id = 174726795999554                                           THEN 'WHOWHO'
+                WHEN u.id = 522465308829269                                           THEN 'ELEVENST'
+                WHEN u.id IN (289984773704012, 424728994992820, 530981119832366)      THEN 'UPLUS'
+                WHEN u.id = 186943880486296                                           THEN 'HAPPYSCRN'
+                -- classify normal UNITS
+                -- WHEN u.unit_type = 'B'                       THEN 'BANNER'       -- NO DATA
+                -- WHEN u.unit_type = 'U'                       THEN 'UNKNOWN'      -- NO DATA
+                -- WHEN u.unit_type = 'F'                       THEN 'INTERSTITIAL' -- NO REV/COST
+                WHEN u.unit_type = 'D'                                                THEN 'DISPLAYAPI'
+                WHEN u.unit_type = 'N'                                                THEN 'BARO'
+                WHEN u.unit_type LIKE 'BB%'                                           THEN 'BAB'
+                WHEN u.unit_type IN ('O', 'I')                                        THEN 'BO'
+                ELSE                                                                       'BS'       -- lockscreen + exceptions + new_types
+            END AS account_type,
+            CASE
+                WHEN u.currency in ('AUD', 'BRL', 'CAD', 'CNY', 'EUR', 'GBP', 'HKD', 'MYR', 'SGD', 'USD') THEN 1000
+                WHEN u.currency in ('INR', 'MXN', 'THB', 'TWD') THEN 100
+                WHEN u.currency in ('JPY') THEN 10
+                ELSE 1
+            END AS point_rate,
+            SUM(p.amount)                               AS point_cost,
+            SUM(CASE WHEN NVL(l.organization_id, c.organization_id) != u.organization_id
+                THEN NVL(p.amount, 0) - NVL(p.base_reward, 0)
+                ELSE 0 END) / point_rate                AS display_cost,
+            SUM(NVL(p.base_reward, 0)) / point_rate AS base_reward_cost
+        FROM
+            bs_point p
+        INNER JOIN bs_device d ON
+          p.device_id = d.id
+        LEFT JOIN
+            ba_lineitem l ON l.id = p.refer_key - 1000000000
+        LEFT JOIN
+            bs_content_campaigns c ON c.id = p.refer_key
+        INNER JOIN
+            ba_unit u ON u.id = p.unit_id
+        WHERE
+            p.created_at >= TIMESTAMP'{start_time}' - interval '5 hours' AND
+            p.created_at < TIMESTAMP'{end_time}' - interval '5 hours' AND
+            p.requested = 'TRUE' AND
+            p.point_type = 'imp'
+        GROUP BY
+            1, 2, 3, 4, 5
+
+      UNION ALL
+
+      SELECT
+            DATE_TRUNC('day', CONVERT_TIMEZONE('Asia/Seoul', p.created_at)) AS date_at,
+            s.ifa,
+            CASE WHEN s.platform = 'I' THEN 100000044 ELSE 100000043 END AS unit_id,
+            'BUZZVIL' AS account_type,
+            1 AS point_rate,
+            SUM(p.amount)                               AS point_cost,
+            SUM(CASE WHEN l.organization_id = 1
+                THEN NVL(p.amount, 0) - NVL(p.base_reward, 0)
+                ELSE 0 END) / point_rate                AS display_cost,
+            SUM(NVL(p.base_reward, 0)) / point_rate     AS base_reward_cost
+
+        FROM
+            hskr_point AS p
+        LEFT JOIN
+            hskr_person AS s ON s.id = p.person_id
+        LEFT JOIN
+            ba_lineitem l ON l.id = p.refer_key - 1000000000
+        WHERE
+            p.created_at >= TIMESTAMP'{start_time}' - interval '5 hours' AND
+            p.created_at < TIMESTAMP'{end_time}' - interval '5 hours'
+        GROUP BY
+            1, 2, 3, 4, 5
+      )
+        SELECT
+            s.date_at,
+            NVL(s.ifa, '00000000-0000-0000-0000-000000000000'),
+            s.unit_id,
+            s.account_type,
+            SUM(NVL(s.point_cost, 0)) AS point_cost,
+            SUM(NVL(s.display_cost, 0)) AS display_cost,
+            SUM(NVL(s.base_reward_cost, 0)) AS base_reward_cost
+        FROM
+            stat_list s
+        GROUP BY
+            1, 2, 3, 4
+
+redshift:
+  table_name: bs_statistics_user_point
+  fields:
+  - date_at
+  - ifa
+  - unit_id
+  - account_type
+  - point_cost
+  - display_cost
+  - base_reward_cost
+  unique_key_list:
+  - date_at
+  - ifa
+  - unit_id
+  increment_key: date_at
+  increment_key_type: timestamp
+  copy_method: incremental
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      date_at                       TIMESTAMP      NOT NULL          ENCODE ZSTD,
+      ifa                           VARCHAR(64)    NOT NULL          ENCODE ZSTD,
+      unit_id                       INT8           NOT NULL          ENCODE ZSTD,
+      account_type                  VARCHAR(64)    DEFAULT NULL      ENCODE ZSTD,
+      point_cost                    DECIMAL(18,9)  DEFAULT NULL      ENCODE ZSTD,
+      display_cost                  DECIMAL(18,9)  DEFAULT NULL      ENCODE ZSTD,
+      base_reward_cost              DECIMAL(18,9)  DEFAULT NULL      ENCODE ZSTD
+    )
+    DISTKEY(ifa)
+    SORTKEY(date_at)
+    ;

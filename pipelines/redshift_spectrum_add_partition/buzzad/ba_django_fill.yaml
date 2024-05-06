@@ -1,0 +1,77 @@
+---
+pipeline_key: ba_django_fill
+pipeline_type: redshift_spectrum_add_partition
+pipeline_dag_configs:
+  start_date: 2019-05-28 00:00:00
+  end_date: 2030-01-01 00:00:00
+  schedule_interval: "@hourly"
+
+athena:
+  table_name: ba_django_fill
+  fields:
+  - request_id
+  - viewer_id
+  - unit_id
+  - unit_type
+  - publisher_user_id
+  - client_ip
+  - request_country
+  - request_sex
+  - request_age
+  - request_relationship
+  - request_region
+  - request_carrier
+  - request_device
+  - request_network_type
+  - lineitem_id
+  - adnetwork_id
+  - item_type
+  - revenue_type
+  - unit_price
+  - objective
+  - is_incentive
+  - filled
+  - position
+  - time
+  partition:
+    location: s3://buzzvil-log-oregon/prod/buzzad/buzzad-django-fill
+    name: partition_timestamp
+    type: hourly
+
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE spectrum.ba_django_fill (
+      request_id             VARCHAR(255),
+      viewer_id              VARCHAR(255),
+      unit_id                INT8,
+      unit_type              VARCHAR(64),
+      publisher_user_id      VARCHAR(255),
+      client_ip              VARCHAR(255),
+      request_country        VARCHAR(64),
+      request_sex            VARCHAR(64),
+      request_age            INT4,
+      request_relationship   VARCHAR(64),
+      request_region         VARCHAR(1024),
+      request_carrier        VARCHAR(255),
+      request_device         VARCHAR(255),
+      request_network_type   VARCHAR(255),
+      lineitem_id            INT8,
+      adnetwork_id           INT8,
+      item_type              VARCHAR(64),
+      revenue_type           VARCHAR(64),
+      unit_price             VARCHAR(255),
+      objective              VARCHAR(255),
+      is_incentive           BOOLEAN,
+      filled                 BOOLEAN,
+      position               INT2,
+      time                   TIMESTAMP
+    )
+    PARTITIONED BY (
+        partition_timestamp TIMESTAMP
+    )
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'ignore.malformed.json'='true'
+    )
+    LOCATION
+      's3://buzzvil-log-oregon/prod/buzzad/buzzad-django-fill/';

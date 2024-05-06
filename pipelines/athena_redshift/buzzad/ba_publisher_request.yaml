@@ -1,0 +1,81 @@
+# Rather than updating DAU once per day, update DAU throughout the day by upserting adviewers hourly
+---
+pipeline_key: ba_publisher_request
+pipeline_type: athena_redshift_sync
+pipeline_dag_configs:
+  start_date: 2019-11-14 00:00:00
+  schedule_interval: "@hourly"
+athena:
+  table_name: ba_allocation
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE spectrum.ba_allocation (
+        request_id                   VARCHAR(64),
+        viewer_id                    VARCHAR(64),
+        unit_id                      VARCHAR(255),
+        country                      VARCHAR(2),
+        client_ip                    VARCHAR(64),
+        direct_normal                INT4,
+        filter_passed                INT4,
+        filled_request               INT4,
+        adnetwork_fill               INT4,
+        direct_backfill              INT4,
+        created_at                   TIMESTAMP
+    )
+    PARTITIONED BY (
+      partition_timestamp timestamp
+    )
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'ignore.malformed.json'='true'
+    )
+    LOCATION
+      's3://buzzvil-log-oregon/prod/buzzad/buzzad-django-publisher_request'
+  partition:
+    location: s3://buzzvil-log-oregon/prod/buzzad/buzzad-django-publisher_request
+    name: partition_timestamp
+    type: hourly
+  process_query: |
+    SELECT
+        unit_id                                          AS unit_id,
+        UPPER(country)                                   AS country,
+        COUNT(*)                                         AS requested_count,
+        COUNT(CASE WHEN filled_request > 0 THEN 1 END)   AS filled_count,
+        DATE_TRUNC('hour', partition_timestamp)          AS hour_at
+    FROM
+        ba_allocation
+    WHERE
+        partition_timestamp >= TIMESTAMP'{start_time}' AND
+        partition_timestamp < TIMESTAMP'{end_time}'
+    GROUP BY
+        1,2,5
+  output_bucket: buzzvil-airflow
+  output_prefix: buzzad/ba_publisher_request
+  file_key: ba_publisher_request
+
+redshift:
+  table_name: ba_publisher_request
+  fields:
+  - unit_id
+  - country
+  - requested_count
+  - filled_count
+  - hour_at
+  unique_key_list:
+  - unit_id
+  - hour_at
+  increment_key: hour_at
+  increment_key_type: timestamp
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+        unit_id           INT8          NOT NULL             ENCODE ZSTD,
+        country           VARCHAR(10)   DEFAULT NULL         ENCODE ZSTD,
+        requested_count   INT4          NOT NULL DEFAULT 0   ENCODE ZSTD,
+        filled_count      INT4          NOT NULL DEFAULT 0   ENCODE ZSTD,
+        hour_at           TIMESTAMP     NOT NULL             ENCODE ZSTD
+    )
+    DISTKEY (unit_id)
+    SORTKEY (hour_at)
+    ;

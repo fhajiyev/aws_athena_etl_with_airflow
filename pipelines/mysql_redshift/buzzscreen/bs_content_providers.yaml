@@ -1,0 +1,132 @@
+#  For 
+# 
+# 
+---
+pipeline_key: bs_content_providers
+pipeline_type: mysql_redshift
+incremental_sync: False
+
+mysql:
+  conn_id: buzzscreen_mysql
+  table_name: content_providers
+  fields:
+  - id
+  - channel_id
+  - publisher
+  - sub_publisher
+  - name
+  - buzzscreen
+  - ctr_filter_off
+  - categories
+  - target_gender
+  - target_age_min
+  - target_age_max
+  - score
+  - media_type
+  - landing_type
+  - clean_mode
+  - buzzscreen_id
+  - tracker
+  - re_filter
+  - re_title
+  - re_description
+  - custom_target_1
+  - custom_target_2
+  - custom_target_3
+  - target_unit
+  - organization_id
+  - template_ids
+  - extra
+  - country
+  - enabled
+  - created_at
+  - scoring_off
+  - updated_at
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: bs_content_providers
+  fields:
+  - id
+  - channel_id
+  - publisher
+  - sub_publisher
+  - name
+  - buzzscreen
+  - ctr_filter_off
+  - categories
+  - target_gender
+  - target_age_min
+  - target_age_max
+  - score
+  - media_type
+  - landing_type
+  - clean_mode
+  - buzzscreen_id
+  - tracker
+  - re_filter
+  - re_title
+  - re_description
+  - custom_target_1
+  - custom_target_2
+  - custom_target_3
+  - target_unit
+  - organization_id
+  - template_ids
+  - extra
+  - country
+  - enabled
+  - created_at
+  - scoring_off
+  - updated_at
+  copy_method: replace
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                    INT8            NOT NULL         ENCODE ZSTD,
+      channel_id            INT4            NOT NULL         ENCODE ZSTD,
+      publisher             VARCHAR(300)    NOT NULL         ENCODE ZSTD,
+      sub_publisher         VARCHAR(300)    NOT NULL         ENCODE ZSTD,
+      name                  VARCHAR(300)    NOT NULL         ENCODE ZSTD,
+
+      buzzscreen            BOOLEAN         DEFAULT FALSE,
+      ctr_filter_off        BOOLEAN         DEFAULT FALSE,
+      categories            VARCHAR(255)    DEFAULT NULL     ENCODE LZO,
+      target_gender         VARCHAR(1)      DEFAULT NULL     ENCODE ZSTD,
+      target_age_min        INT2            DEFAULT NULL     ENCODE ZSTD,
+      target_age_max        INT2            DEFAULT NULL     ENCODE ZSTD,
+      score                 INT4            NOT NULL         ENCODE ZSTD,
+
+      media_type            INT2            NOT NULL         ENCODE ZSTD,
+      landing_type          INT2            NOT NULL         ENCODE ZSTD,
+      clean_mode            INT2            NOT NULL         ENCODE ZSTD,
+      buzzscreen_id         INT8            DEFAULT NULL     ENCODE ZSTD,
+      tracker               VARCHAR(100)    DEFAULT NULL     ENCODE LZO,
+      re_filter             VARCHAR(255)    DEFAULT NULL     ENCODE LZO,
+      re_title              VARCHAR(255)    DEFAULT NULL     ENCODE LZO,
+      re_description        VARCHAR(255)    DEFAULT NULL     ENCODE LZO,
+      custom_target_1       VARCHAR(255)    DEFAULT NULL     ENCODE LZO,
+      custom_target_2       VARCHAR(255)    DEFAULT NULL     ENCODE LZO,
+      custom_target_3       VARCHAR(255)    DEFAULT NULL     ENCODE LZO,
+      target_unit           VARCHAR(500)    DEFAULT NULL     ENCODE LZO,
+
+      organization_id       INT8            NOT NULL         ENCODE ZSTD,
+      template_ids          VARCHAR(255)    NOT NULL         ENCODE LZO,
+      extra                 VARCHAR(5000)   NOT NULL         ENCODE LZO,
+      country               VARCHAR(2)      NOT NULL         ENCODE ZSTD,
+      enabled               VARCHAR(1)      NOT NULL         ENCODE ZSTD,
+      created_at            TIMESTAMP       NOT NULL         ENCODE ZSTD,
+      scoring_off           BOOLEAN         DEFAULT FALSE,
+      updated_at            TIMESTAMP       NOT NULL         ENCODE ZSTD,
+      PRIMARY KEY(id)
+    )
+    DISTSTYLE ALL
+    SORTKEY (created_at)
+    ;
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id

@@ -1,0 +1,123 @@
+---
+pipeline_key: segmentsvc_g_property_pixelsvc_data
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-10-22 09:00:00
+  schedule_interval: "0 * * * *"
+  max_active_runs: 1
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: dev-emergency-mugshot
+    - trigger: sla_miss
+      args:
+        channel: dev-emergency-mugshot
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: athena_process_segmentsvc_l_property_pixelsvc_data
+    timedelta_hours: 0
+downstream_dependencies:
+  - dag_id: s3_clear_prefix_segmentsvc_clear_g_property_pixelsvc_data
+    task_id: generate_uuid
+
+athena:
+  workgroup: segmentsvc
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+      format = 'PARQUET',
+      parquet_compression = 'SNAPPY',
+      external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+
+        SELECT
+
+        IF(t_new.data_source_id IS NULL AND t_new.uid_key IS NULL AND t_new.uid_value IS NULL, t_prev.data_source_id, t_new.data_source_id) as data_source_id,
+        IF(t_new.data_source_id IS NULL AND t_new.uid_key IS NULL AND t_new.uid_value IS NULL, t_prev.property_timestamp, t_new.property_timestamp) as property_timestamp,
+        IF(t_new.data_source_id IS NULL AND t_new.uid_key IS NULL AND t_new.uid_value IS NULL, t_prev.payload, t_new.payload) as payload,
+        IF(t_new.data_source_id IS NULL AND t_new.uid_key IS NULL AND t_new.uid_value IS NULL, t_prev.uid_key, t_new.uid_key) as uid_key,
+        IF(t_new.data_source_id IS NULL AND t_new.uid_key IS NULL AND t_new.uid_value IS NULL, t_prev.uid_value, t_new.uid_value) as uid_value
+
+        FROM
+        (
+
+          SELECT
+            data_source_id,
+            property_timestamp,
+            payload,
+            uid_key,
+            uid_value
+          FROM
+          {{{{ var.value.get('server_env', 'prod') }}}}_segmentsvc.g_property_pixelsvc_data
+          WHERE
+            partition_timestamp >= (TIMESTAMP'{start_time}' - INTERVAL '1' hour) AND
+            partition_timestamp < (TIMESTAMP'{end_time}' - INTERVAL '1' hour)
+
+        ) t_prev
+
+        FULL OUTER JOIN
+
+        (
+
+          SELECT
+            data_source_id,
+            property_timestamp,
+            payload,
+            uid_key,
+            uid_value
+          FROM
+          (
+            SELECT
+              data_source_id,
+              property_timestamp,
+              payload,
+              uid_key,
+              uid_value,
+              ROW_NUMBER() OVER(PARTITION BY uid_key, uid_value, data_source_id ORDER BY property_timestamp DESC) as rn
+            FROM
+            {{{{ var.value.get('server_env', 'prod') }}}}_segmentsvc.l_property_pixelsvc_data
+            WHERE
+              partition_timestamp >= TIMESTAMP'{start_time}' AND
+              partition_timestamp < TIMESTAMP'{end_time}'
+          ) t1
+          WHERE t1.rn = 1
+
+        ) t_new
+        ON
+        t_prev.data_source_id = t_new.data_source_id AND
+        t_prev.uid_key = t_new.uid_key AND
+        t_prev.uid_value = t_new.uid_value
+
+    );
+  output_bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  output_prefix: "segmentsvc/gold/property/year={year}/month={month}/day={day}/hour={hour}/origin=pixelsvc_property"
+  file_key: pixelsvc_property
+  file_extension: parquet
+
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      `data_source_id` BIGINT,
+      `property_timestamp` TIMESTAMP,
+      `payload` MAP<STRING,STRING>,
+      `uid_key` STRING,
+      `uid_value` STRING
+    )
+    PARTITIONED BY (
+      partition_timestamp TIMESTAMP
+    )
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY")
+    ;
+  database: "{{ var.value.get('server_env', 'prod') }}_segmentsvc"
+  table: g_property_pixelsvc_data
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/segmentsvc/gold/property/"
+  partition:
+    name: partition_timestamp
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+    location: "s3://{{{{ var.value.get('server_env', 'prod') }}}}-buzzvil-data-lake/segmentsvc/gold/property/year={year}/month={month}/day={day}/hour={hour}/origin=pixelsvc_property"

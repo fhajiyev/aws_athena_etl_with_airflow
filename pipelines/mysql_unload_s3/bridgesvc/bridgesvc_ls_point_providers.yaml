@@ -1,0 +1,64 @@
+# CREATE TABLE `point_providers` (
+#   `id` int(11) NOT NULL AUTO_INCREMENT,
+#   `key` varchar(100) NOT NULL,
+#   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+#   `updated_at` datetime DEFAULT CURRENT_TIMESTAMP,
+#   `icon_url` varchar(100) NOT NULL,
+#   `name` varchar(100) NOT NULL,
+#   `point_name` varchar(100) NOT NULL,
+#   `point_unit` varchar(100) NOT NULL,
+#   `is_external` tinyint(1) DEFAULT NULL,
+#   PRIMARY KEY (`id`),
+#   UNIQUE KEY `name` (`key`)
+# ) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+---
+pipeline_key: bridgesvc_ls_point_providers
+pipeline_type: mysql_unload_s3
+pipeline_dag_configs:
+  start_date: 2020-10-14 17:00:00
+  schedule_interval: "0 17 * * *"
+mysql:
+  conn_id: bridgesvc_mysql
+  table_name: point_providers
+  increment_key: id
+  increment_key_type: numeric
+  fields:
+  - id
+  - key
+  - created_at
+  - updated_at
+  - icon_url
+  - name
+  - point_name
+  - point_unit
+  - is_external
+s3:
+  bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  prefix: bridgesvc/landing_snapshot/point_providers/year={year}/month={month}/day={day}/hour={hour}
+  file_key: bridgesvc_ls_point_providers
+  data_format: parquet
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id            BIGINT,
+      key           VARCHAR(255),
+      created_at    TIMESTAMP,
+      updated_at    TIMESTAMP,
+      icon_url      VARCHAR(255),
+      name          VARCHAR(255),
+      point_name    VARCHAR(255),
+      point_unit    VARCHAR(255),
+      is_external   TINYINT
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY");
+  database: "{{ var.value.get('server_env', 'prod') }}_bridgesvc"
+  table: ls_point_providers
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/bridgesvc/landing_snapshot/point_providers"
+  partition:
+    key: partition_timestamp
+    value: "{{execution_date.strftime('%Y-%m-%d %H:00:00')}}"
+    subdir: "year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}"
+

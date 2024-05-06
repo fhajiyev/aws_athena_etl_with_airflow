@@ -1,0 +1,85 @@
+---
+pipeline_key: adnreportsvc_report_data
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: adnreportsvc_mysql
+  table_name: report_data
+  fields:
+  - id
+  - adnetwork_id
+  - app_id
+  - placement_id
+  - country
+  - data_at
+  - requests
+  - fills
+  - impressions
+  - clicks
+  - conversions
+  - currency
+  - currency_rate
+  - original_revenue
+  - revenue_before_tax
+  - tax_rate
+  - revenue
+  - created_at
+  - updated_at
+  increment_key: updated_at
+  increment_key_type: timestamp
+  unique_key_list:
+  - id
+redshift:
+  table_name: adnreportsvc_report_data
+  fields:
+  - id
+  - adnetwork_id
+  - app_id
+  - placement_id
+  - country
+  - data_at
+  - requests
+  - fills
+  - impressions
+  - clicks
+  - conversions
+  - currency
+  - currency_rate
+  - original_revenue
+  - revenue_before_tax
+  - tax_rate
+  - revenue
+  - created_at
+  - updated_at
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                 INT8            NOT NULL       ENCODE AZ64,
+      adnetwork_id       INT8            NOT NULL       ENCODE AZ64,
+      app_id             VARCHAR(256)    DEFAULT NULL   ENCODE ZSTD,
+      placement_id       VARCHAR(256)    DEFAULT NULL   ENCODE ZSTD,
+      country            VARCHAR(2)      DEFAULT NULL   ENCODE ZSTD,
+      data_at            TIMESTAMP       NOT NULL       ENCODE AZ64,
+      requests           INT4            NOT NULL       ENCODE AZ64,
+      fills              INT4            NOT NULL       ENCODE AZ64,
+      impressions        INT4            NOT NULL       ENCODE AZ64,
+      clicks             INT4            NOT NULL       ENCODE AZ64,
+      conversions        INT4            NOT NULL       ENCODE AZ64,
+      currency           VARCHAR(3)      NOT NULL       ENCODE ZSTD,
+      currency_rate      DECIMAL(27,9)   NOT NULL       ENCODE AZ64,
+      original_revenue   DECIMAL(27,9)   NOT NULL       ENCODE AZ64,
+      revenue_before_tax DECIMAL(27,9)   NOT NULL       ENCODE AZ64,
+      tax_rate           DECIMAL(27,9)   NOT NULL       ENCODE AZ64,
+      revenue            DECIMAL(27,9)   NOT NULL       ENCODE AZ64,
+      created_at         TIMESTAMP       NOT NULL       ENCODE AZ64,
+      updated_at         TIMESTAMP       NOT NULL       ENCODE AZ64
+    )
+    DISTKEY(placement_id)
+    SORTKEY(data_at)
+    ;
+  increment_key: updated_at
+  increment_key_type: timestamp
+  unique_key_list:
+  - id

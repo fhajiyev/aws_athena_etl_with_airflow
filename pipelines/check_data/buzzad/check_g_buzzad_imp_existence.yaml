@@ -1,0 +1,26 @@
+# This pipeline runs at 2AM KST and checks whether the YESTERDAY's g_buzzad_imp_dau data is present at runtime
+---
+pipeline_key: check_g_buzzad_imp_dau_existence
+pipeline_type: check_data
+pipeline_dag_configs:
+  start_date: 2020-10-27 17:00:00
+  schedule_interval: "0 17 * * *"
+  catch_up: False
+
+augend:
+  data_source:
+    type: redshift
+    conn_id: redshift
+  query: |
+    SELECT
+      COUNT(*) AS result
+    FROM
+      g_buzzad_imp_dau
+    WHERE
+      created_at >= TIMESTAMP'{start_time}' - INTERVAL '17 HOURS' + INTERVAL '24 HOURS' AND
+      created_at < TIMESTAMP'{end_time}' - INTERVAL '17 HOURS' + INTERVAL '24 HOURS'
+  multiplier: 1
+
+comparison:
+  operator: gt
+  threshold: 0

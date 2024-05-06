@@ -1,0 +1,121 @@
+# BuzzAD Unit MySQL Table
+# Extra Context
+---
+pipeline_key: ba_unit
+pipeline_type: mysql_redshift
+incremental_sync: False
+
+mysql:
+  conn_id: buzzad_mysql
+  table_name: units
+  fields:
+   - id
+   - app_id
+   - organization_id
+   - unit_name
+   - unit_type
+   - currency
+   - country
+   - timezone
+   - unit_group_id
+   - platform
+   - is_buzzvil_unit
+   - restricted_word
+   - target_age_from
+   - target_age_to
+   - target_carrier
+   - target_sex
+   - target_app
+   - target_region
+   - target_relationship
+   - target_device_name
+   - ads_filter_rule
+   - autoplay
+   - revenue_rate
+   - revenue_rate_cpy
+   - reward_rate
+   - reward_rate_cpy
+   - adn_timeout
+   - target_fill
+   - is_deleted
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: ba_unit
+  fields:
+   - id
+   - app_id
+   - organization_id
+   - name
+   - unit_type
+   - currency
+   - country
+   - timezone
+   - unit_group_id
+   - platform
+   - is_buzzvil_unit
+   - restricted_word
+   - target_age_from
+   - target_age_to
+   - target_carrier
+   - target_sex
+   - target_app
+   - target_region
+   - target_relationship
+   - target_device_name
+   - ads_filter_rule
+   - autoplay
+   - revenue_rate
+   - revenue_rate_cpy
+   - reward_rate
+   - reward_rate_cpy
+   - adn_timeout
+   - target_fill
+   - is_deleted
+  copy_method: replace
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                    INT8             NOT NULL,
+      app_id                INT8             NOT NULL                 ENCODE ZSTD,
+      organization_id       INT4             NULL                     ENCODE ZSTD,
+      name                  VARCHAR(100)     NOT NULL DEFAULT ''      ENCODE LZO,
+      unit_type             VARCHAR(10)      NOT NULL                 ENCODE ZSTD,
+      currency              VARCHAR(3)       NOT NULL                 ENCODE ZSTD,
+      country               VARCHAR(2)       NULL                     ENCODE ZSTD,
+      timezone              VARCHAR(32)      NULL                     ENCODE ZSTD,
+      unit_group_id         INT8             NOT NULL                 ENCODE ZSTD,
+      platform              VARCHAR(1)       NOT NULL                 ENCODE ZSTD,
+      is_buzzvil_unit       BOOL             NOT NULL DEFAULT FALSE   ENCODE ZSTD,
+      restricted_word       VARCHAR(10240)   NULL                     ENCODE LZO,
+      target_age_from       VARCHAR(1)       DEFAULT NULL             ENCODE ZSTD,
+      target_age_to         VARCHAR(1)       DEFAULT NULL             ENCODE ZSTD,
+      target_carrier        VARCHAR(1)       DEFAULT NULL             ENCODE ZSTD,
+      target_sex            VARCHAR(1)       DEFAULT NULL             ENCODE ZSTD,
+      target_app            VARCHAR(1)       DEFAULT NULL             ENCODE ZSTD,
+      target_region         VARCHAR(1)       DEFAULT NULL             ENCODE ZSTD,
+      target_relationship   VARCHAR(1)       DEFAULT NULL             ENCODE ZSTD,
+      target_device_name    VARCHAR(1)       DEFAULT NULL             ENCODE ZSTD,
+      ads_filter_rule       VARCHAR(3000)    DEFAULT NULL             ENCODE ZSTD,
+      autoplay              INT2             DEFAULT NULL             ENCODE ZSTD,
+      reward_rate           DECIMAL(20,2)    DEFAULT NULL             ENCODE ZSTD,
+      reward_rate_cpy       DECIMAL(20,2)    DEFAULT NULL             ENCODE ZSTD,
+      revenue_rate          DECIMAL(20,2)    DEFAULT NULL             ENCODE ZSTD,
+      revenue_rate_cpy      DECIMAL(20,2)    DEFAULT NULL             ENCODE ZSTD,
+      adn_timeout           DECIMAL(10,2)    DEFAULT NULL             ENCODE ZSTD,
+      target_fill           INT2             DEFAULT NULL             ENCODE ZSTD,
+      is_deleted            BOOL             NOT NULL DEFAULT FALSE   ENCODE ZSTD,
+      PRIMARY KEY(id)
+    )
+    DISTSTYLE ALL
+    SORTKEY(id)
+    ;
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id
+
+# python makemigration.py --service_name='buzzad' --migration_type='mysql_redshift' --pipeline_path 'pipelines/mysql_redshift/buzzad/ba_unit.yaml'

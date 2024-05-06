@@ -1,0 +1,53 @@
+# CREATE TABLE `content_creatives` (
+#   `id` int(11) NOT NULL AUTO_INCREMENT,
+#   `campaign_id` int(10) unsigned NOT NULL,
+#   `platform` varchar(1) NOT NULL,
+#   `image` varchar(255) NOT NULL,
+#   `created_at` datetime(6) NOT NULL,
+#   PRIMARY KEY (`id`),
+#   UNIQUE KEY `content_creatives_campaign_id_7d919dda_uniq` (`campaign_id`,`platform`),
+#   KEY `content_creatives_f14acec3` (`campaign_id`)
+# ) ENGINE=InnoDB AUTO_INCREMENT=21337923 DEFAULT CHARSET=utf8;
+
+---
+pipeline_key: bs_ls_content_creative
+pipeline_type: mysql_unload_s3
+pipeline_dag_configs:
+  start_date: 2020-10-01 17:00:00
+  schedule_interval: "0 17 * * *"
+mysql:
+  conn_id: buzzscreen_mysql
+  table_name: content_creatives
+  increment_key: id
+  increment_key_type: numeric
+  fields:
+  - id
+  - campaign_id
+  - platform
+  - image
+  - created_at
+s3:
+  bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  prefix: buzzscreen/landing_snapshot/content_creative/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzscreen_content_creative
+  data_format: parquet
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id           BIGINT,
+      campaign_id  BIGINT,
+      platform     TINYINT,
+      image        VARCHAR(512),
+      created_at   TIMESTAMP
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY");
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzscreen"
+  table: ls_content_creative
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/buzzscreen/landing_snapshot/content_creative"
+  partition:
+    key: partition_timestamp
+    value: "{{execution_date.strftime('%Y-%m-%d %H:00:00')}}"
+    subdir: "year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}"

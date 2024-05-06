@@ -1,0 +1,56 @@
+---
+pipeline_key: ba_extra_budget
+pipeline_type: mysql_redshift
+incremental_sync: False
+
+mysql:
+  conn_id: buzzad_mysql
+  table_name: extra_budgets
+  fields:
+  - id
+  - budget
+  - currency
+  - requester_id
+  - extra_budget_type
+  - note
+  - created_at
+  - updated_at
+  - ad_group_id
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: ba_extra_budget
+  fields:
+  - id
+  - budget
+  - currency
+  - requester_id
+  - extra_budget_type
+  - note
+  - created_at
+  - updated_at
+  - ad_group_id
+  copy_method: replace
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                  INT8            NOT NULL       ENCODE ZSTD,
+      budget              DECIMAL(18,9)   NOT NULL       ENCODE ZSTD,
+      currency            VARCHAR(3)      NOT NULL       ENCODE ZSTD,
+      requester_id        INT4            DEFAULT NULL   ENCODE ZSTD,
+      extra_budget_type   VARCHAR(2)      NOT NULL       ENCODE ZSTD,
+      note                VARCHAR(2048)   DEFAULT NULL   ENCODE LZO,
+      created_at          TIMESTAMP       NOT NULL       ENCODE ZSTD,
+      updated_at          TIMESTAMP       NOT NULL       ENCODE ZSTD,
+      ad_group_id         INT8            NOT NULL       ENCODE ZSTD,
+      PRIMARY KEY (id)
+    )
+    DISTSTYLE EVEN
+    ;
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id

@@ -1,0 +1,62 @@
+---
+pipeline_key: adnsvc_g_response
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-08-01 00:00:00
+  schedule_interval: "0 * * * *"
+upstream_dependencies:
+  - dag_id: athena_catalog_adnsvc_l_response
+    timedelta_hours: 0
+athena:
+  workgroup: adnsvc
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+          format = 'JSON',
+          external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+        SELECT
+          payload['adnetwork_id'] as adnetwork_id,
+          payload['duration'] as duration,
+          payload['lineitem_id'] as lineitem_id,
+          payload['request_id'] as request_id,
+          payload['response'] as response,
+          payload['status_code'] as status_code,
+          payload['is_fill'] as is_fill,
+          log_at
+        FROM
+          {{{{ var.value.get('server_env', 'prod') }}}}_adnsvc.l_response
+        WHERE
+          partition_timestamp >= TIMESTAMP'{start_time}' AND
+          partition_timestamp < TIMESTAMP'{end_time}'
+    );
+  output_bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  output_prefix: adnsvc/gold/response/year={year}/month={month}/day={day}/hour={hour}
+  file_key: adnsvc_gold_response
+  file_extension: json.gz
+
+  database: "{{ var.value.get('server_env', 'prod') }}_adnsvc"
+  table: g_response
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/adnsvc/gold/response"
+  partition:
+    name: partition_timestamp
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+    location: "s3://{{{{ var.value.get('server_env', 'prod') }}}}-buzzvil-data-lake/adnsvc/gold/response/year={year}/month={month}/day={day}/hour={hour}"
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      adnetwork_id      INT,
+      duration          INT,
+      lineitem_id       INT,
+      request_id        VARCHAR(40),
+      response          STRING,
+      status_code       INT,
+      is_fill           BOOLEAN,
+      log_at            TIMESTAMP
+    )
+    PARTITIONED BY (partition_timestamp TIMESTAMP)
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'ignore.malformed.json'='true'
+    )
+    LOCATION '{location}';

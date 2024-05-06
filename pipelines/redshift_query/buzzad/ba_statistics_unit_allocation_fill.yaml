@@ -1,0 +1,76 @@
+---
+pipeline_key: ba_statistics_unit_allocation_fill_load
+pipeline_type: redshift_query
+pipeline_dag_configs:
+  start_date: 2020-07-24 00:00:00
+  schedule_interval: "0 * * * *"
+  depends_on_past: false
+  retries: 5
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency
+    - trigger: sla_miss
+      args:
+        channel: data-emergency
+    - trigger: retry
+      args:
+        channel: data-warning
+
+execution_delay: 600
+
+upstream_dependencies:
+  - dag_id: athena_process_ba_g_statistics_unit_allocation_fill
+    timedelta_hours: 0
+
+redshift:
+  query: |
+    BEGIN;
+    CREATE TABLE IF NOT EXISTS   ba_statistics_unit_allocation_fill
+    (
+      data_at                             TIMESTAMP         ENCODE AZ64,
+      unit_type                           VARCHAR(255)      ENCODE ZSTD,
+      unit_id                             BIGINT            ENCODE AZ64, 
+      unit_name                           VARCHAR(255)      ENCODE ZSTD,
+      target_fill                         BIGINT            ENCODE AZ64,
+      request_count                       BIGINT            ENCODE AZ64,
+      underfilled_request_count           BIGINT            ENCODE AZ64,
+      overfilled_request_count            BIGINT            ENCODE AZ64,
+      sufficiently_filled_request_count   BIGINT            ENCODE AZ64,
+      on_point_filled_request_count       BIGINT            ENCODE AZ64,
+      filled_request_count                BIGINT            ENCODE AZ64,
+      request_volume                      BIGINT            ENCODE AZ64,
+      fill_volume                         BIGINT            ENCODE AZ64,
+      overfill_volume                     BIGINT            ENCODE AZ64,
+      underfill_volume                    BIGINT            ENCODE AZ64,
+      direct_normal_fill_volume           BIGINT            ENCODE AZ64,
+      direct_backfill_fill_volume         BIGINT            ENCODE AZ64,
+      adnetwork_fill_volume               BIGINT            ENCODE AZ64,
+      sdk_fill_volume                     BIGINT            ENCODE AZ64,
+      rtb_fill_volume                     BIGINT            ENCODE AZ64,
+      js_fill_volume                      BIGINT            ENCODE AZ64
+    )
+    DISTKEY (unit_id)
+    SORTKEY (data_at)
+    ;
+    
+    DELETE
+    FROM
+      ba_statistics_unit_allocation_fill
+    WHERE
+    data_at >= TIMESTAMP'{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}' AND
+    data_at < TIMESTAMP'{{ next_execution_date.strftime('%Y-%m-%d %H:00:00') }}'
+    ;  
+    COPY
+      ba_statistics_unit_allocation_fill
+    FROM
+      's3://prod-buzzvil-data-lake/buzzad/gold/statistics_unit_allocation_fill/year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}/'
+    ACCESS_KEY_ID '{{ var.value.get('redshift_access_key') }}'
+    SECRET_ACCESS_KEY '{{ var.value.get('redshift_secret_key') }}'
+    PARQUET
+    STATUPDATE OFF
+    COMPUPDATE OFF;
+    
+    END;

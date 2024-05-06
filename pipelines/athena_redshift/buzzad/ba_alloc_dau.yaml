@@ -1,0 +1,86 @@
+# Rather than updating DAU once per day, update DAU throughout the day by upserting adviewers hourly
+---
+pipeline_key: ba_alloc_dau
+pipeline_type: athena_redshift_sync
+pipeline_dag_configs:
+  start_date: 2019-01-01 00:00:00
+  schedule_interval: "@hourly"
+slack_alert_channel: dev-emergency
+execution_delay: 1200 # Wait 20 minutes for good measure (fluentd flushes with timekey of 10 minutes and timekey_wait of 1 minute)
+
+downstream_dependencies:
+  - dag_id: redshift_transform_load_ba_alloc_nru
+    task_id: generate_uuid
+
+athena:
+  table_name: ba_allocation
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE spectrum.ba_allocation (
+        request_id                   VARCHAR(64),
+        viewer_id                    VARCHAR(64),
+        unit_id                      VARCHAR(255),
+        country                      VARCHAR(2),
+        client_ip                    VARCHAR(64),
+        direct_normal                INT4,
+        filter_passed                INT4,
+        filled_request               INT4,
+        adnetwork_fill               INT4,
+        direct_backfill              INT4,
+        created_at                   TIMESTAMP
+    )
+    PARTITIONED BY (
+      partition_timestamp timestamp
+    )
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'ignore.malformed.json'='true'
+    )
+    LOCATION
+      's3://buzzvil-log-oregon/prod/buzzad/buzzad-django-publisher_request'
+  partition:
+    location: s3://buzzvil-log-oregon/prod/buzzad/buzzad-django-publisher_request
+    name: partition_timestamp
+    type: hourly
+  process_query: |
+    SELECT DISTINCT
+      trim(viewer_id),
+      SPLIT_PART(trim(viewer_id), 'ifa:', 2) as ifa,
+      unit_id,
+      DATE_TRUNC('day', DATE_ADD('hour', 9, partition_timestamp)) as created_at
+    FROM
+      ba_allocation
+    WHERE
+      partition_timestamp >= TIMESTAMP'{start_time}' AND
+      partition_timestamp < TIMESTAMP'{end_time}' AND
+      viewer_id IS NOT NULL AND
+      unit_id IS NOT NULL
+
+  output_bucket: buzzvil-airflow
+  output_prefix: buzzad/ba_alloc_dau
+  file_key: ba_alloc_dau
+
+redshift:
+  table_name: ba_alloc_dau
+  fields:
+  - viewer_id
+  - ifa
+  - unit_id
+  - created_at
+  unique_key_list:
+  - viewer_id
+  - unit_id
+  - created_at
+  increment_key: created_at
+  increment_key_type: timestamp
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+        viewer_id               VARCHAR(64)     NOT NULL       ENCODE ZSTD,
+        ifa                     VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+        unit_id                 INT8            NOT NULL       ENCODE ZSTD,
+        created_at              TIMESTAMP       NOT NULL       ENCODE ZSTD
+    )
+    DISTKEY(viewer_id)
+    SORTKEY(created_at, unit_id)

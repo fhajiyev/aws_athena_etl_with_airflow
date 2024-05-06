@@ -1,0 +1,95 @@
+---
+pipeline_key: ba_installed_apps
+pipeline_type: athena_redshift_sync
+pipeline_dag_configs:
+  start_date: 2019-03-20 00:00:00
+  schedule_interval: "@hourly"
+athena:
+  table_name: ba_installed_apps
+  partition:
+    location: s3://buzzvil-log-oregon/prod/buzzad/buzzad-general-installed_apps/
+    name: partition_timestamp
+    type: hourly
+  process_query: |
+    WITH
+    nested_logs as (
+      SELECT DISTINCT
+        device_id,
+        SPLIT_PART(device_id, 'ifa:', 2) as ifa,
+        SPLIT(package_names, ',') as package_names,
+        partition_timestamp as updated_at
+      FROM
+        ba_installed_apps
+      WHERE
+        partition_timestamp >= TIMESTAMP'{start_time}' AND
+        partition_timestamp < TIMESTAMP'{end_time}'
+    ),
+    unnested_logs as (
+      SELECT
+        device_id,
+        ifa,
+        package_name,
+        updated_at
+      FROM
+        nested_logs
+      CROSS JOIN UNNEST(package_names) AS t(package_name)
+    )
+    SELECT
+        device_id,
+        ifa,
+        package_name,
+        updated_at
+    FROM
+        unnested_logs
+    WHERE
+        package_name IS NOT NULL
+  output_bucket: buzzvil-athena
+  output_prefix: prod/buzzad/installed_apps
+  file_key: ba_installed_apps
+
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE spectrum.ba_installed_apps (
+      device_id         VARCHAR(255),
+      package_names     VARCHAR(65535),
+      log_at            TIMESTAMP,
+      time              TIMESTAMP,
+      log_type          VARCHAR(64),
+      message           VARCHAR(255)
+    )
+    PARTITIONED BY (
+      partition_timestamp timestamp
+    )
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'ignore.malformed.json'='true'
+    )
+    LOCATION
+      's3://buzzvil-log-oregon/prod/buzzad/buzzad-general-installed_apps'
+    ;
+redshift:
+  table_name: ba_installed_apps
+  fields:
+  - device_id
+  - ifa
+  - package_name
+  - updated_at
+  unique_key_list:
+  - device_id
+  deduplicate_key_list:
+  - device_id
+  - package_name
+  increment_key: updated_at
+  increment_key_type: timestamp
+  copy_method: deduplicated_upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      device_id                 VARCHAR(64)    NOT NULL       ENCODE ZSTD,
+      ifa                       VARCHAR(64)    DEFAULT NULL   ENCODE ZSTD,
+      package_name              VARCHAR(256)   NOT NULL       ENCODE ZSTD,
+      updated_at                TIMESTAMP      NOT NULL       ENCODE ZSTD
+    )
+    DISTKEY(ifa)
+    SORTKEY(package_name, ifa)
+    ;

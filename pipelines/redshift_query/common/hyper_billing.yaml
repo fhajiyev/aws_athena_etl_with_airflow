@@ -1,0 +1,35 @@
+# DO-887: Hyper billing cost pivot.
+# Note that the landing data has 2-days delay.
+---
+pipeline_key: hyper_billing
+pipeline_type: redshift_query
+pipeline_dag_configs:
+  start_date: 2020-10-05 00:00:00
+  schedule_interval: "0 3 * * *"
+  catchup: false
+  depends_on_past: false
+  retries: 0
+redshift:
+  query: |
+    BEGIN;
+
+    DELETE FROM hyperbilling
+    WHERE 
+      billingperiodstartdate >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '2 day');
+
+    COPY hyperbilling (lineitemid , billingperiodstartdate , billingperiodenddate , usageaccountid , usagestartdate , usageenddate ,productcode , usagetype , operation , availabilityzone , resourceid , usageamount , normalizationfactor , currencycode , unblendedrate , unblendedcost , lineitemdescription , taxtype , sku , leasecontractlength , offeringclass , purchaseoption , term , unit , reservationavailabilityzone , reservedaccountid , reservedinstancesid , productcategory , region , instancetype , tag_application , tag_environment, tag_name , tag_role , tag_service , tags )
+      FROM 's3://hyper-billing/591756927972/{{ (execution_date - macros.timedelta(days=2)).strftime('%Y%m-000.gz') }}'
+      ACCESS_KEY_ID '{{ var.value.get('redshift_access_key') }}'
+      SECRET_ACCESS_KEY '{{ var.value.get('redshift_secret_key') }}'
+      REGION AS 'ap-northeast-1'
+      DELIMITER AS '\t'
+    IGNOREHEADER 1
+    TIMEFORMAT 'auto'
+    EMPTYASNULL
+    STATUPDATE ON
+    COMPUPDATE OFF
+    GZIP
+    TRUNCATECOLUMNS;
+
+    END;
+

@@ -1,0 +1,81 @@
+# Note that
+# - interval '1 hours' is actually "interval - 16 (execution time) + 24 (day offset) - 9(utc conversion)"
+
+---
+pipeline_key: pop_dau
+pipeline_type: athena_redshift_sync
+pipeline_dag_configs:
+  start_date: 2020-01-30 16:00:00
+  schedule_interval: "0 16 * * *"
+athena:
+  table_name: bi_event
+  partition:
+    location: s3://prod-buzzvil-firehose/buzzinsight/event/
+    name: partition_timestamp
+    type: hourly
+  process_query: |
+    SELECT DISTINCT
+      DATE_TRUNC('day', partition_timestamp + interval '9' HOUR) as created_at,
+      unit_id,
+      ifa
+    FROM
+      bi_event
+    WHERE
+      partition_timestamp >= TIMESTAMP'{start_time}' - INTERVAL '1' HOUR AND
+      partition_timestamp < TIMESTAMP'{end_time}' - INTERVAL '1' HOUR AND
+      type = 'show' AND
+      name = 'pop'
+  output_bucket: prod-buzzvil-data-lake
+  output_prefix: pop/gold/pop_dau
+  file_key: pop_dau
+
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE spectrum.bi_event (
+      app_id             INT8,
+      unit_id            INT8,
+      type               VARCHAR(255),
+      name               VARCHAR(255),
+      created_at         VARCHAR(255),
+      version            INT4,
+      user_id            VARCHAR(255),
+      sub_user_id        VARCHAR(255),
+      guid               VARCHAR(255),
+      ifa                VARCHAR(255),
+      sex                VARCHAR(255),
+      year_of_birth      INT4,
+      carrier            VARCHAR(255),
+      device_name        VARCHAR(255),
+      device_os          VARCHAR(255),
+      device_resolution  VARCHAR(255),
+      ip                 VARCHAR(255),
+      ip_country         VARCHAR(255),
+      attributes         VARCHAR(65535)
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1'
+    ) LOCATION 's3://prod-buzzvil-firehose/buzzinsight/event/';
+redshift:
+  table_name: g_pop_dau
+  fields:
+  - created_at
+  - unit_id
+  - ifa
+  increment_key: created_at
+  increment_key_type: timestamp
+  unique_key_list:
+  - created_at
+  - unit_id
+  - ifa
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      created_at          TIMESTAMP      NOT NULL       ENCODE ZSTD,
+      unit_id             INT8           NULL           ENCODE ZSTD,
+      ifa                 VARCHAR(64)    NULL           ENCODE ZSTD
+    )
+    DISTKEY(ifa)
+    SORTKEY(created_at, unit_id)
+    ;

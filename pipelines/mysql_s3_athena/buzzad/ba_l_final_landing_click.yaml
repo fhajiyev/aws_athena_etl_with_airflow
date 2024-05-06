@@ -1,0 +1,44 @@
+---
+    pipeline_key: ba_l_final_landing_click
+    pipeline_type: mysql_s3_athena
+    pipeline_dag_configs:
+      start_date: 2020-05-31 15:00:00
+      schedule_interval: "0 * * * *"
+    mysql:
+      conn_id: buzzad_mysql
+      table_name: final_landing_click_logs
+      increment_key: created_at
+      increment_key_type: timestamp
+      fields:
+        - id
+        - raw_data_click_id
+        - lineitem_id
+        - unit_id
+        - created_at
+    s3:
+      bucket: prod-buzzvil-data-lake
+      prefix: buzzad/landing/final_landing_click/year={year}/month={month}/day={day}/hour={hour}
+      file_key: buzzad-final-landing-click
+      data_format: json
+    athena:
+      create_table_syntax: |
+        CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+          id                  INT      ,
+          raw_data_click_id   BIGINT   ,
+          lineitem_id         BIGINT   ,
+          unit_id             BIGINT   ,
+          created_at          TIMESTAMP
+        )
+        PARTITIONED BY (partition_timestamp TIMESTAMP)
+        ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+        WITH SERDEPROPERTIES (
+          'serialization.format' = '1',
+          'ignore.malformed.json'='true'
+        )
+        LOCATION '{location}';
+      database: prod_buzzad
+      table: l_final_landing_click
+      location: s3://prod-buzzvil-data-lake/buzzad/landing/final_landing_click
+      partition:
+        name: partition_timestamp
+        type: hourly

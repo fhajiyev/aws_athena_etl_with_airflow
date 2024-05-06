@@ -1,0 +1,209 @@
+---
+pipeline_key: ba_click_joined_with_conversion
+pipeline_type: redshift_transform_load
+pipeline_dag_configs:
+  start_date: 2020-01-01 00:00:00
+  schedule_interval: "30 * * * *"
+
+transform:
+  select_query: |
+    SELECT
+      conv.viewer_id,
+      conv.unit_id,
+      conv.lineitem_id,
+      click.created_at AS clicked_at,
+      click.ip         AS click_ip,
+      conv.sales,
+      year_of_birth,
+      sex,
+      carrier,
+      region,
+      platform,
+      click.country,
+      device_name,
+      publisher_user_id,
+      relationship,
+      ifa,
+      udid,
+      adid,
+      user_agent,
+      app_version,
+      lat,
+      lon,
+      web_user_agent,
+      creative_id,
+      conv.adnetwork_id,
+      adnetwork_campaign_id,
+      ipv6,
+      timezone,
+      mcc,
+      mnc,
+      days_since_sign_up,
+      position,
+      session_id,
+      registered_days,
+      network_type,
+      product_id,
+      product_code,
+      click_id,
+      id AS conversion_id,
+      seq_id,
+      order_id,
+      campaign_id,
+      campaign_name,
+      sub_type,
+      payout,
+      currency,
+      unit_payout,
+      unit_currency,
+      device_os,
+      conv.created_at  AS converted_at,
+      conv.updated_at  AS conversion_updated_at,
+      conv.ip          AS conversion_ip,
+      is_succeeded,
+      reward,
+      unit_sales,
+      is_forced_conversion
+    FROM
+      ba_click AS click
+    INNER JOIN
+      ba_conversion AS conv ON click.click_id = conv.raw_data_click_id
+    WHERE
+      click.created_at >= dateadd(MONTHS, -2, TIMESTAMP'{start_time}') AND
+      click.created_at < dateadd(MINUTES, -30, TIMESTAMP'{end_time}') AND
+      conv.created_at >= dateadd(MINUTES, -30, TIMESTAMP'{start_time}') AND
+      conv.created_at < dateadd(MINUTES, -30, TIMESTAMP'{end_time}')
+  delete_query: ''
+
+
+redshift:
+  table_name: ba_click_joined_with_conversion
+  fields:
+    - viewer_id
+    - unit_id
+    - lineitem_id
+    - clicked_at
+    - click_ip
+    - sales
+    - year_of_birth
+    - sex
+    - carrier
+    - region
+    - platform
+    - country
+    - device_name
+    - publisher_user_id
+    - relationship
+    - ifa
+    - udid
+    - adid
+    - user_agent
+    - app_version
+    - lat
+    - lon
+    - web_user_agent
+    - creative_id
+    - adnetwork_id
+    - adnetwork_campaign_id
+    - ipv6
+    - timezone
+    - mcc
+    - mnc
+    - days_since_sign_up
+    - position
+    - session_id
+    - registered_days
+    - network_type
+    - product_id
+    - product_code
+    - click_id
+    - conversion_id
+    - seq_id
+    - order_id
+    - campaign_id
+    - campaign_name
+    - sub_type
+    - payout
+    - currency
+    - unit_payout
+    - unit_currency
+    - device_os
+    - converted_at
+    - conversion_updated_at
+    - conversion_ip
+    - is_succeeded
+    - reward
+    - unit_sales
+    - is_forced_conversion
+  unique_key_list:
+    - click_id
+    - conversion_id
+  deduplicate_key_list:
+    - click_id
+    - conversion_id
+  increment_key: converted_at
+  increment_key_type: timestamp
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+        viewer_id             VARCHAR(64)     NOT NULL ENCODE ZSTD,
+        unit_id               BIGINT          NOT NULL ENCODE AZ64,
+        lineitem_id           BIGINT          NOT NULL ENCODE AZ64,
+        clicked_at            TIMESTAMP       NOT NULL ENCODE AZ64,
+        click_ip              BIGINT          ENCODE AZ64,
+        sales                 NUMERIC(18, 9)  ENCODE AZ64,
+        year_of_birth         INTEGER         ENCODE AZ64,
+        sex                   CHAR            ENCODE ZSTD,
+        carrier               VARCHAR(128)    ENCODE ZSTD,
+        region                VARCHAR(128)    ENCODE ZSTD,
+        platform              CHAR            ENCODE ZSTD,
+        country               CHAR(2)         ENCODE ZSTD,
+        device_name           VARCHAR(20)     ENCODE BYTEDICT,
+        publisher_user_id     VARCHAR(256)    ENCODE ZSTD,
+        relationship          CHAR            ENCODE ZSTD,
+        ifa                   VARCHAR(64)     ENCODE ZSTD,
+        udid                  VARCHAR(64)     ENCODE ZSTD,
+        adid                  VARCHAR(64)     ENCODE ZSTD,
+        user_agent            VARCHAR(256)    ENCODE ZSTD,
+        app_version           VARCHAR(32)     ENCODE ZSTD,
+        lat                   NUMERIC(8, 6)   ENCODE AZ64,
+        lon                   NUMERIC(9, 6)   ENCODE AZ64,
+        web_user_agent        VARCHAR(256)    ENCODE ZSTD,
+        creative_id           BIGINT          ENCODE AZ64,
+        adnetwork_id          BIGINT          NOT NULL ENCODE AZ64,
+        adnetwork_campaign_id VARCHAR(128)    ENCODE ZSTD,
+        ipv6                  VARCHAR(45)     ENCODE ZSTD,
+        timezone              VARCHAR(45)     ENCODE ZSTD,
+        mcc                   SMALLINT        ENCODE AZ64,
+        mnc                   SMALLINT        ENCODE AZ64,
+        days_since_sign_up    SMALLINT        ENCODE AZ64,
+        position              INTEGER         ENCODE AZ64,
+        session_id            VARCHAR(45)     ENCODE ZSTD,
+        registered_days       INTEGER         ENCODE AZ64,
+        network_type          VARCHAR(45)     ENCODE ZSTD,
+        product_id            BIGINT          ENCODE AZ64,
+        product_code          VARCHAR(255)    ENCODE ZSTD,
+        click_id              VARCHAR(64)     ENCODE ZSTD,
+        conversion_id         INTEGER         NOT NULL ENCODE AZ64,
+        seq_id                VARCHAR(300)    ENCODE ZSTD,
+        order_id              BIGINT          ENCODE AZ64,
+        campaign_id           VARCHAR(300)    ENCODE ZSTD,
+        campaign_name         VARCHAR(300)    ENCODE ZSTD,
+        sub_type              VARCHAR(300)    ENCODE ZSTD,
+        payout                NUMERIC(18, 9)  ENCODE AZ64,
+        currency              VARCHAR(10)     ENCODE ZSTD,
+        unit_payout           NUMERIC(18, 9)  ENCODE AZ64,
+        unit_currency         VARCHAR(10)     ENCODE ZSTD,
+        device_os             VARCHAR(30)     ENCODE ZSTD,
+        converted_at          TIMESTAMP       ENCODE AZ64,
+        conversion_updated_at TIMESTAMP       ENCODE AZ64,
+        conversion_ip         BIGINT          ENCODE AZ64,
+        is_succeeded          VARCHAR(1)      ENCODE ZSTD,
+        reward                BIGINT          ENCODE AZ64,
+        unit_sales            NUMERIC(18, 9)  ENCODE AZ64,
+        is_forced_conversion  SMALLINT        ENCODE AZ64
+    )
+        DISTKEY (viewer_id)
+        SORTKEY (converted_at)
+    ;

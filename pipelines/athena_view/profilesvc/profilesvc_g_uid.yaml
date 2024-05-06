@@ -1,0 +1,45 @@
+---
+pipeline_key: profilesvc_g_uid
+pipeline_type: athena_view
+pipeline_dag_configs:
+  start_date: 2020-07-24 01:00:00
+  schedule_interval: # One time
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: dev-emergency-mugshot
+    - trigger: sla_miss
+      args:
+        channel: dev-emergency-mugshot
+    - trigger: retry 
+      args:
+        channel: data-warning
+#  email:
+#    - trigger: failure
+#      args:
+#        address:
+#          - andy.kim@buzzvil.com
+#          - kyle.jang@buzzvil.com
+
+athena:
+  query: |
+    CREATE OR REPLACE VIEW {database}.{table}_view AS
+    WITH
+    rank AS (
+    SELECT
+      value, field, profile_id,
+      rank() OVER (PARTITION BY value, field ORDER BY created_at DESC) AS rnk
+    FROM
+      {database}.g_uid
+    )
+    SELECT DISTINCT
+      value, field, profile_id
+    FROM
+      rank
+    WHERE
+      rnk = 1
+    ;
+  database: "{env}_profilesvc"
+  table: g_uid

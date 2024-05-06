@@ -1,0 +1,138 @@
+#  For
+#
+#
+---
+pipeline_key: bp_order
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: buzzstore_mysql
+  table_name: orders
+  fields:
+  - id
+  - status
+  - created_at
+  - check_coupon_used
+  - extra_param
+  - barcode
+  - expiry_date
+  - issued_date
+  - result_code
+  - result_message
+  - result_raw_data
+  - cancel_result_code
+  - cancel_result_message
+  - secret_key
+  - client_side_order_version
+  - external_side_approval_no
+  - market_price
+  - order_ip
+  - sale_price
+  - unit_price
+  - sale_point
+  - cancel_result_raw_data
+  - country
+  - store_type
+  - product_id
+  - updated_at
+  - account_id
+  - publisher_user_id
+  - app_id
+  - email
+  - phone
+  - notice_at
+  - notice_cnt
+  - external_status
+  - status_message
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: bp_order
+  fields:
+  - id
+  - status
+  - created_at
+  - check_coupon_used
+  - extra_param
+  - barcode
+  - expiry_date
+  - issued_date
+  - result_code
+  - result_message
+  - result_raw_data
+  - cancel_result_code
+  - cancel_result_message
+  - secret_key
+  - client_side_order_version
+  - external_side_approval_no
+  - market_price
+  - order_ip
+  - sale_price
+  - unit_price
+  - sale_point
+  - cancel_result_raw_data
+  - country
+  - store_type
+  - product_id
+  - updated_at
+  - account_id
+  - publisher_user_id
+  - app_id
+  - email
+  - phone
+  - notice_at
+  - notice_cnt
+  - external_status
+  - status_message
+  copy_method: incremental
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                          INT8            NOT NULL       ENCODE ZSTD,
+      status                      VARCHAR(32)     NOT NULL       ENCODE ZSTD,
+      created_at                  TIMESTAMP       NOT NULL       ENCODE ZSTD,
+      check_coupon_used           INT2            NOT NULL       ENCODE ZSTD,
+      extra_param                 VARCHAR(255)    DEFAULT NULL   ENCODE LZO,
+      barcode                     VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+      expiry_date                 TIMESTAMP       DEFAULT NULL   ENCODE ZSTD,
+      issued_date                 TIMESTAMP       DEFAULT NULL   ENCODE ZSTD,
+      result_code                 VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+      result_message              VARCHAR(100)    DEFAULT NULL   ENCODE ZSTD,
+      result_raw_data             VARCHAR(2048)   DEFAULT NULL   ENCODE LZO,
+      cancel_result_code          VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+      cancel_result_message       VARCHAR(100)    DEFAULT NULL   ENCODE ZSTD,
+      secret_key                  VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+      client_side_order_version   VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+      external_side_approval_no   VARCHAR(64)     DEFAULT NULL   ENCODE LZO,
+      market_price                DECIMAL(27,9)   DEFAULT NULL   ENCODE ZSTD,
+      order_ip                    INT8            DEFAULT NULL   ENCODE ZSTD,
+      sale_price                  DECIMAL(27,9)   DEFAULT NULL   ENCODE ZSTD,
+      unit_price                  DECIMAL(27,9)   DEFAULT NULL   ENCODE ZSTD,
+      sale_point                  DECIMAL(27,9)   DEFAULT NULL   ENCODE ZSTD,
+      cancel_result_raw_data      VARCHAR(255)    DEFAULT NULL   ENCODE LZO,
+      country                     VARCHAR(10)     NOT NULL       ENCODE ZSTD,
+      store_type                  VARCHAR(10)     NOT NULL       ENCODE ZSTD,
+      product_id                  INT8            NOT NULL       ENCODE ZSTD,
+      updated_at                  TIMESTAMP       NOT NULL       ENCODE ZSTD,
+      account_id                  INT8            DEFAULT NULL   ENCODE ZSTD,
+      publisher_user_id           VARCHAR(100)    DEFAULT NULL   ENCODE LZO,
+      app_id                      INT8            NOT NULL       ENCODE ZSTD,
+      email                       VARCHAR(100)    DEFAULT NULL   ENCODE LZO,
+      phone                       VARCHAR(100)    DEFAULT NULL   ENCODE LZO,
+      notice_at                   TIMESTAMP       DEFAULT NULL   ENCODE ZSTD,
+      notice_cnt                  INT2            DEFAULT NULL   ENCODE ZSTD,
+      external_status             INT2            DEFAULT NULL   ENCODE ZSTD,
+      status_message              VARCHAR(100)    DEFAULT NULL   ENCODE LZO,
+      PRIMARY KEY(id)
+    )
+    DISTKEY (id)
+    SORTKEY (updated_at, id)
+    ;
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id

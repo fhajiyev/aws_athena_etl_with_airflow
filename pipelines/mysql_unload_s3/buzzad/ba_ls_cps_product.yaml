@@ -1,0 +1,60 @@
+# CREATE TABLE `cps_products` (
+#   `id` int(11) NOT NULL AUTO_INCREMENT,
+#   `lineitem_id` bigint(20) NOT NULL,
+#   `price` decimal(18,9) NOT NULL,
+#   `discounted_price` decimal(18,9) DEFAULT NULL,
+#   `category` varchar(24) NOT NULL,
+#   `is_spotlighted` tinyint(1) NOT NULL,
+#   `created_at` datetime(6) NOT NULL,
+#   `updated_at` datetime(6) NOT NULL,
+#   PRIMARY KEY (`id`),
+#   UNIQUE KEY `lineitem_id` (`lineitem_id`)
+# ) ENGINE=InnoDB AUTO_INCREMENT=828 DEFAULT CHARSET=utf8;
+---
+pipeline_key: ba_cps_product
+pipeline_type: mysql_unload_s3
+pipeline_dag_configs:
+  start_date: 2020-09-01 17:00:00
+  schedule_interval: "0 17 * * *"
+mysql:
+  conn_id: buzzad_mysql
+  table_name: cps_products
+  increment_key: id
+  increment_key_type: numeric
+  fields:
+  - id
+  - lineitem_id
+  - price
+  - discounted_price
+  - category
+  - is_spotlighted
+  - created_at
+  - updated_at
+s3:
+  bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  prefix: buzzad/landing_snapshot/cps_product/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzad_ls_cps_product
+  data_format: parquet
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id                 BIGINT,
+      lineitem_id        BIGINT,
+      price              DECIMAL(18,9),
+      discounted_price   DECIMAL(18,9),
+      category           VARCHAR(255),
+      is_spotlighted     TINYINT,
+      created_at         TIMESTAMP,
+      updated_at         TIMESTAMP
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY");
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzad"
+  table: ls_cps_product
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/buzzad/landing_snapshot/cps_product"
+  partition:
+    key: partition_timestamp
+    value: "{{execution_date.strftime('%Y-%m-%d %H:00:00')}}"
+    subdir: "year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}"

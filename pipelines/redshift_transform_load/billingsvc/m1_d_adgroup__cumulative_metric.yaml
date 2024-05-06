@@ -1,0 +1,97 @@
+# Note that
+#
+---
+pipeline_key: m1_d_adgroup_cumulative_metric
+pipeline_type: redshift_transform_load
+pipeline_dag_configs:
+  start_date: 2020-01-01 16:00:00
+  schedule_interval: "0 16 * * *"
+
+upstream_dependencies:
+  # The last execution of athena_redshift_sync_ba_alloc_dau of 15:00:00 UTC or 00:00:00 KST should've been finished for this NRU pipeline to run.
+  - dag_id: athena_redshift_sync_ba_alloc_dau
+    timedelta_hours: 1
+
+transform:
+  delete_query: |
+    DELETE
+    FROM
+      datavil.m1_d_adgroup_cumulative_metric
+
+  select_query: |
+    WITH
+    raw_stats AS (
+      SELECT
+          DATE_TRUNC('day', CONVERT_TIMEZONE('Asia/Seoul', s.data_at)) as kst_at,
+          l.ad_group_id,
+          a.initial_budget,
+          a.total_budget,
+          SUM(s.sales_total) OVER (PARTITION BY l.ad_group_id ORDER BY s.created_at ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) as cumulative_spent,
+          GREATEST(cumulative_spent - a.total_budget, 0) AS cumulative_overspent,
+          LEAST(cumulative_spent - cumulative_overspent, a.initial_budget + a.carryover_budget) AS cumulative_revenue
+      FROM
+          ba_statistics_unit_creative s
+          INNER JOIN ba_lineitem l ON
+              s.lineitem_id = l.id
+          INNER JOIN ba_ad_group_extended a ON
+              l.ad_group_id = a.id
+
+    ), ranked AS(
+      SELECT
+        kst_at,
+        ad_group_id,
+        initial_budget,
+        total_budget,
+        cumulative_spent,
+        cumulative_overspent,
+        cumulative_revenue,
+        ROW_NUMBER() OVER (PARTITION BY ad_group_id, kst_at ORDER BY cumulative_spent DESC) AS row_num
+      FROM
+        raw_stats
+    )
+      SELECT
+        kst_at,
+        ad_group_id,
+        initial_budget,
+        total_budget,
+        cumulative_spent,
+        cumulative_overspent,
+        cumulative_revenue
+      FROM
+        ranked
+      WHERE
+        row_num = 1
+
+redshift:
+  conn_id: redshift_de
+  table_name: datavil.m1_d_adgroup_cumulative_metric
+  fields:
+  - kst_at
+  - ad_group_id
+  - initial_budget
+  - total_budget
+  - cumulative_spent
+  - cumulative_overspent
+  - cumulative_revenue
+  unique_key_list:
+  - kst_at
+  - ad_group_id
+  increment_key: kst_at
+  increment_key_type: timestamp
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      kst_at                   TIMESTAMP       NOT NULL   ENCODE AZ64,
+      ad_group_id              INT8            NOT NULL   ENCODE AZ64,
+      initial_budget           DECIMAL(27,9)   NOT NULL   ENCODE AZ64,
+      total_budget             DECIMAL(27,9)   NOT NULL   ENCODE AZ64,
+      cumulative_spent         DECIMAL(27,9)   NOT NULL   ENCODE AZ64,
+      cumulative_overspent     DECIMAL(27,9)   NOT NULL   ENCODE AZ64,
+      cumulative_revenue       DECIMAL(27,9)   NOT NULL   ENCODE AZ64,
+      UNIQUE(kst_at, ad_group_id)
+    )
+    DISTKEY(ad_group_id)
+    SORTKEY(kst_at)
+    ;
+

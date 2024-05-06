@@ -1,0 +1,21 @@
+---
+pipeline_key: ba_daily_adviewers_view
+pipeline_type: redshift_query
+pipeline_dag_configs:
+  start_date: 2020-11-20 00:00:00
+  # schedule_interval: "0 * * * *"
+redshift:
+  query: |
+    BEGIN;
+    DROP VIEW IF EXISTS ba_daily_adviewers;
+    CREATE VIEW ba_daily_adviewers AS
+    SELECT
+      viewer_id,
+      unit_id,
+      ifa,
+      registered_days,
+      created_at
+    FROM
+      g_buzzad_imp_dau
+    WITH NO SCHEMA BINDING;
+    END;

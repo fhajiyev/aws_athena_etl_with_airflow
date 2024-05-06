@@ -1,0 +1,120 @@
+# TODO: support various timezone
+---
+pipeline_key: ba_g_statistics_unit_allocation_fill
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-07-24 00:00:00
+  schedule_interval: "0 * * * *"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency
+    - trigger: sla_miss
+      args:
+        channel: data-emergency
+    - trigger: retry
+      args:
+        channel: data-warning
+
+execution_delay: 600
+
+upstream_dependencies:
+  - dag_id: athena_catalog_ba_l_ad_request
+    timedelta_hours: 0
+
+  - dag_id: redshift_s3_unload_ba_l_unit
+    timedelta_hours: 0
+
+athena:
+  workgroup: buzzad
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+      format = 'PARQUET',
+      parquet_compression = 'SNAPPY',
+      external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+      SELECT
+        DATE_TRUNC('hour', r.partition_timestamp) AS data_at,
+        u.unit_type,
+        u.id as unit_id,
+        u.name AS unit_name,
+
+        COALESCE(r.target_fill, u.target_fill) AS target_fill,
+        COUNT(r.filled_request) AS request_count,
+        SUM(CASE WHEN COALESCE(r.target_fill, u.target_fill) > filled_request THEN 1 ELSE 0 END) AS underfilled_request_count,
+        SUM(CASE WHEN COALESCE(r.target_fill, u.target_fill) < filled_request THEN 1 ELSE 0 END) AS overfilled_request_count,
+        SUM(CASE WHEN COALESCE(r.target_fill, u.target_fill) <= filled_request THEN 1 ELSE 0 END) AS sufficiently_filled_request_count,
+        SUM(CASE WHEN COALESCE(r.target_fill, u.target_fill) = filled_request THEN 1 ELSE 0 END) AS on_point_filled_request_count,
+        SUM(CASE WHEN filled_request > 0 THEN 1 ELSE 0 END) AS filled_request_count,
+
+        SUM(COALESCE(r.target_fill, u.target_fill)) AS request_volume,
+        SUM(r.filled_request) AS fill_volume,
+        SUM(CASE WHEN COALESCE(r.target_fill, u.target_fill) < filled_request THEN filled_request - COALESCE(r.target_fill, u.target_fill) ELSE 0 END) AS overfill_volume,
+        SUM(CASE WHEN COALESCE(r.target_fill, u.target_fill) > filled_request THEN COALESCE(r.target_fill, u.target_fill) - filled_request ELSE 0 END) AS underfill_volume,
+
+        SUM(direct_normal) AS direct_normal_fill_volume,
+        SUM(direct_backfill) AS direct_backfill_fill_volume,
+        SUM(adnetwork) AS adnetwork_fill_volume,
+        SUM(sdk) AS sdk_fill_volume,
+        SUM(rtb) AS rtb_fill_volume,
+        SUM(js) AS js_fill_volume
+      FROM
+        prod_buzzad.l_ad_request r
+        INNER JOIN prod_buzzad.l_unit u ON
+            r.unit_id = u.id
+      WHERE
+        u.partition_timestamp = TIMESTAMP'{start_time}' AND
+        r.partition_timestamp >= TIMESTAMP'{start_time}' AND
+        r.partition_timestamp < TIMESTAMP'{end_time}'
+      GROUP BY
+        1, 2, 3, 4, 5
+    );
+  output_bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  output_prefix: buzzad/gold/statistics_unit_allocation_fill/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzad_gold_statistics_unit_allocation_fill
+  file_extension: parquet
+
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      data_at                             TIMESTAMP,
+      unit_id                             BIGINT,
+      unit_type                           VARCHAR(255),
+
+      target_fill                         INTEGER,
+      request_count                       INTEGER,
+      underfilled_request_count           INTEGER,
+      overfilled_request_count            INTEGER,
+      sufficiently_filled_request_count   INTEGER,
+      on_pointfilled_request_count        INTEGER,
+      filled_request_count                INTEGER,
+
+      request_volume                      INTEGER,
+      fill_volume                         INTEGER,
+      overfill_volume                     INTEGER,
+      underfill_volume                    INTEGER,
+
+      direct_normal_fill_volume           INTEGER,
+      direct_backfill_fill_volume         INTEGER,
+      adn_fill_volume                     INTEGER,
+      sdk_fill_volume                     INTEGER,
+      rtb_fill_volume                     INTEGER,
+      js_fill_volume                      INTEGER
+    )
+    PARTITIONED BY (
+      partition_timestamp TIMESTAMP
+    )
+    STORED AS PARQUET
+    LOCATION '{location}'
+    tblproperties("parquet.compress"="SNAPPY")
+    ;
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzad"
+  table: g_statistics_unit_allocation_fill
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/buzzad/gold/statistics_unit_allocation_fill"
+  partition:
+    name: partition_timestamp
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+    location: "s3://{{{{ var.value.get('server_env', 'prod') }}}}-buzzvil-data-lake/buzzad/gold/statistics_unit_allocation_fill/year={year}/month={month}/day={day}/hour={hour}"
+

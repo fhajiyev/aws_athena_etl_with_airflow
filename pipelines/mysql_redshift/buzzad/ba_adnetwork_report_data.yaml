@@ -1,0 +1,80 @@
+---
+pipeline_key: ba_adnetwork_report_data
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: buzzad_mysql
+  table_name: adnetwork_report_data
+  fields:
+  - id
+  - adnetwork_id
+  - adnetwork_app_id
+  - adnetwork_placement_id
+  - unit_id
+  - data_at
+  - country
+  - request_count
+  - fill_count
+  - impression_count
+  - click_count
+  - revenue_sum
+  - conversion_count
+  - ad_type
+  - sub_adnetwork_id
+  - created_at
+  - updated_at
+  increment_key: updated_at
+  increment_key_type: timestamp
+  unique_key_list:
+  - id
+redshift:
+  table_name: ba_adnetwork_report_data_old
+  fields:
+  - id
+  - adnetwork_id
+  - adnetwork_app_id
+  - adnetwork_placement_id
+  - unit_id
+  - data_at
+  - country
+  - request_count
+  - fill_count
+  - impression_count
+  - click_count
+  - revenue_sum
+  - conversion_count
+  - ad_type
+  - sub_adnetwork_id
+  - created_at
+  - updated_at
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+        id                       INT4             NOT NULL              ENCODE ZSTD,
+        adnetwork_id             INT4             NOT NULL              ENCODE ZSTD,
+        adnetwork_app_id         VARCHAR(256)     DEFAULT NULL          ENCODE ZSTD,
+        adnetwork_placement_id   VARCHAR(256)     DEFAULT NULL          ENCODE ZSTD,
+        unit_id                  INT8             NOT NULL              ENCODE ZSTD,
+        data_at                  TIMESTAMP        NOT NULL              ENCODE ZSTD,
+        country                  VARCHAR(2)       DEFAULT NULL          ENCODE ZSTD,
+        request_count            INT4             NOT NULL              ENCODE ZSTD,
+        fill_count               INT4             NOT NULL              ENCODE ZSTD,
+        impression_count         INT4             NOT NULL              ENCODE ZSTD,
+        click_count              INT4             NOT NULL              ENCODE ZSTD,
+        revenue_sum              DECIMAL(18, 9)   NOT NULL              ENCODE ZSTD,
+        conversion_count         INT4             NOT NULL DEFAULT 0    ENCODE ZSTD,
+        ad_type                  VARCHAR(32)      DEFAULT NULL          ENCODE ZSTD,
+        sub_adnetwork_id         VARCHAR(128)     DEFAULT NULL          ENCODE ZSTD,
+        created_at               TIMESTAMP        NOT NULL              ENCODE ZSTD,
+        updated_at               TIMESTAMP        NOT NULL              ENCODE ZSTD,
+        PRIMARY KEY(id)
+    )
+    DISTSTYLE ALL
+    SORTKEY(updated_at)
+    ;
+  increment_key: updated_at
+  increment_key_type: timestamp
+  unique_key_list:
+  - id

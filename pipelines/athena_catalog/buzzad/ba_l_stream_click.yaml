@@ -1,0 +1,66 @@
+---
+pipeline_key: ba_l_stream_click
+pipeline_type: athena_catalog
+pipeline_dag_configs:
+  start_date: 2020-10-30 00:00:00
+  schedule_interval: "0 * * * *"
+
+# There can be a maximum of 600s delay before the last batch of data for a given hour slot comes in.
+# https://github.com/Buzzvil/adserver/blob/22e9288699a1197644a37790ecae014539ac3e0e/deploy/fluentd/etc/fluent.conf#L53
+# TODO: Decrease execution_delay after pipeline migration to kinesis or kafka
+execution_delay: 600
+
+athena:
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzad"
+  table: l_stream_click
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/buzzad/landing/click_stream"
+  partition:
+    name: partition_timestamp
+    location: "s3://{{{{ var.value.get('server_env', 'prod') }}}}-buzzvil-data-lake/buzzad/landing/click_stream/{year}/{month}/{day}/{hour}"
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      viewer_id                VARCHAR(64),
+      unit_id                  BIGINT,
+      lineitem_id              BIGINT,
+      ip                       BIGINT,
+      sales                    FLOAT,
+
+      year_of_birth            INT,
+      sex                      VARCHAR(1),
+      carrier                  VARCHAR(64),
+      region                   VARCHAR(64),
+      platform                 VARCHAR(64),
+      country                  VARCHAR(2),
+      device_name              VARCHAR(64),
+      publisher_user_id        VARCHAR(64),
+      relationship             VARCHAR(2),
+      ifa                      VARCHAR(64),
+      udid                     VARCHAR(64),
+      adid                     VARCHAR(64),
+      user_agent               VARCHAR(64),
+      app_version              VARCHAR(32),
+      lat                      FLOAT,
+      lon                      FLOAT,
+      web_user_agent           VARCHAR(256),
+      position                 INT,
+      session_id               VARCHAR(45),
+      creative_id              BIGINT,
+      adnetwork_id             BIGINT,
+      adnetwork_campaign_id    VARCHAR(128),
+      registered_days          INT,
+      network_type             VARCHAR(64),
+
+      product_code             VARCHAR(64),
+      product_id               VARCHAR(64),
+      time                     TIMESTAMP,
+      allocation_id            VARCHAR(64),
+      initial_allocation_id    VARCHAR(64)
+    )
+    PARTITIONED BY (partition_timestamp TIMESTAMP)
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'ignore.malformed.json'='true'
+    )
+    LOCATION '{location}';

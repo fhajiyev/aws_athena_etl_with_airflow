@@ -1,0 +1,64 @@
+# Note that
+#
+---
+pipeline_key: ba_alloc_nru
+pipeline_type: redshift_transform_load
+pipeline_dag_configs:
+  start_date: 2019-01-01 16:00:00
+  schedule_interval: "0 16 * * *"
+
+upstream_dependencies:
+  # The last execution of athena_redshift_sync_ba_alloc_dau of 15:00:00 UTC or 00:00:00 KST should've been finished for this NRU pipeline to run.
+  - dag_id: athena_redshift_sync_ba_alloc_dau
+    timedelta_hours: 1
+
+transform:
+  select_query: |
+    SELECT
+      dau.viewer_id,
+      dau.ifa,
+      dau.unit_id,
+      dau.created_at as date_joined
+    FROM
+      ba_alloc_dau dau
+      LEFT JOIN ba_alloc_nru nru ON
+        dau.viewer_id = nru.viewer_id AND
+        dau.unit_id = nru.unit_id
+    WHERE
+      nru.viewer_id IS NULL AND
+      dau.created_at >= TIMESTAMP'{start_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS' AND
+      dau.created_at < TIMESTAMP'{end_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS'
+  delete_query : |
+    DELETE
+    FROM
+      ba_alloc_nru
+    WHERE
+      date_joined >= TIMESTAMP'{start_time}' - interval '16 hours' + INTERVAL '24 HOURS' AND
+      date_joined < TIMESTAMP'{end_time}' - interval '16 hours' + INTERVAL '24 HOURS'
+
+redshift:
+  table_name: ba_alloc_nru
+  fields:
+  - viewer_id
+  - ifa
+  - unit_id
+  - date_joined
+  unique_key_list:
+  - viewer_id
+  - unit_id
+  increment_key: date_joined
+  increment_key_type: timestamp
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      viewer_id                VARCHAR(64)    NOT NULL       ENCODE ZSTD,
+      ifa                      VARCHAR(64)    DEFAULT NULL   ENCODE ZSTD,
+      unit_id                  INT8           DEFAULT NULL   ENCODE ZSTD,
+      date_joined              TIMESTAMP      DEFAULT NULL   ENCODE ZSTD,
+      UNIQUE(viewer_id, unit_id)
+    )
+    DISTKEY(viewer_id)
+    SORTKEY(date_joined)
+    ;
+

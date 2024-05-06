@@ -1,0 +1,95 @@
+---
+pipeline_key: statssvc_g_unit_ad_reward
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-05-28 11:00:00
+  schedule_interval: "0 * * * *"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency
+    - trigger: sla_miss
+      args:
+        channel: data-emergency
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: athena_view_pointsvc_g_vw_point
+    timedelta_hours: 6
+
+downstream_dependencies:
+  - dag_id: statssvc_import_job
+    task_id: unit_ad_reward
+
+athena:
+  workgroup: statssvc
+  # Below time configs are needed to set time prefix for S3 directory.
+  year:  "{{ (execution_date - macros.timedelta(hours=6)).strftime('%Y') }}"
+  month: "{{ (execution_date - macros.timedelta(hours=6)).strftime('%m') }}"
+  day:   "{{ (execution_date - macros.timedelta(hours=6)).strftime('%d') }}"
+  hour:  "{{ (execution_date - macros.timedelta(hours=6)).strftime('%H') }}"
+
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+      format = 'PARQUET',
+      parquet_compression = 'SNAPPY',
+      external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+      SELECT
+        DATE_TRUNC('hour', P.created_at)  AS data_at,
+        P.unit_id                         AS unit_id,
+        L.country                         AS country,                   -- lineitem의 country 사용 (유닛은 country가 여러개 들어갈 수 있음)
+        L.item_type                       AS lineitem_type,
+        L.revenue_type                    AS revenue_type,
+        L.organization_id                 AS lineitem_organization_id,
+        U.organization_id                 AS unit_organization_id,
+        SUM(1)                            AS reward_count,
+        SUM(-P.amount)                    AS reward                     -- redeem point는 언제나 0보다 작음
+      FROM
+        {{{{ var.value.get('server_env', 'prod') }}}}_pointsvc.g_vw_point P
+        INNER JOIN {{{{ var.value.get('server_env', 'prod') }}}}_buzzad.l_vw_unit U ON P.unit_id = U.id
+        INNER JOIN {{{{ var.value.get('server_env', 'prod') }}}}_buzzad.l_vw_lineitem L ON P.resource_id = L.id
+      WHERE
+        P.amount < 0 AND                    -- redeem point
+        P.redeem_status = 'succeeded' AND   -- postback succeeded point
+        P.resource_type = 'ad' AND
+        P.partition_timestamp >= TIMESTAMP'{{{{ (execution_date - macros.timedelta(hours=6)).strftime('%Y-%m-%d %H:00:00') }}}}' AND
+        P.partition_timestamp < TIMESTAMP'{{{{ (next_execution_date - macros.timedelta(hours=6)).strftime('%Y-%m-%d %H:00:00') }}}}'
+      GROUP BY 1, 2, 3, 4, 5, 6, 7
+    );
+  database: "{{ var.value.get('server_env', 'prod') }}_statssvc"
+  table: g_unit_ad_reward
+  output_bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  output_prefix: statssvc/gold/unit_ad_reward/year={year}/month={month}/day={day}/hour={hour}
+  file_key: statssvc_g_unit_ad_reward
+  file_extension: parquet
+
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+        data_at                     TIMESTAMP,
+        unit_id                     BIGINT,
+        country                     STRING,
+        lineitem_type               STRING,
+        revenue_type                STRING,
+        lineitem_organization_id    BIGINT,
+        unit_organization_id        BIGINT,
+        reward_count                BIGINT,
+        reward                      BIGINT
+    )
+    PARTITIONED BY (
+      partition_timestamp TIMESTAMP
+    )
+    STORED AS PARQUET
+    LOCATION '{location}'
+    tblproperties("parquet.compress"="SNAPPY");
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/statssvc/gold/unit_ad_reward"
+  partition:
+      name: partition_timestamp
+      value: "{{ (execution_date - macros.timedelta(hours=6)).strftime('%Y-%m-%d %H:00:00') }}"
+      location: "s3://{{{{ var.value.get('server_env', 'prod') }}}}-buzzvil-data-lake/statssvc/gold/unit_ad_reward/year={year}/month={month}/day={day}/hour={hour}"
+

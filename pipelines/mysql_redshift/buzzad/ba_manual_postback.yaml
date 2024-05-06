@@ -1,0 +1,59 @@
+---
+pipeline_key: ba_manual_postback
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: buzzad_mysql
+  table_name: manual_postback
+  fields:
+  - id
+  - raw_data_click_id
+  - unit_id
+  - lineitem_id
+  - user_id
+  - title
+  - point
+  - is_succeed
+  - created_at
+  - updated_at
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: ba_manual_postback
+  fields:
+  - id
+  - raw_data_click_id
+  - unit_id
+  - lineitem_id
+  - user_id
+  - title
+  - point
+  - is_succeed
+  - created_at
+  - updated_at
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                  INT8           NOT NULL,
+      raw_data_click_id   INT8           DEFAULT NULL   ENCODE AZ64,
+      unit_id             INT8           DEFAULT NULL   ENCODE AZ64,
+      lineitem_id         INT8           DEFAULT NULL   ENCODE AZ64,
+      user_id             VARCHAR(712)   NOT NULL       ENCODE ZSTD,
+      title               VARCHAR(712)   NOT NULL       ENCODE LZO,
+      point               INT8           NOT NULL       ENCODE AZ64,
+      is_succeed          INT2           NOT NULL       ENCODE AZ64,
+      created_at          TIMESTAMP      NOT NULL       ENCODE ZSTD,
+      updated_at          TIMESTAMP      NOT NULL       ENCODE ZSTD,
+      PRIMARY KEY(id)
+    )
+    DISTKEY(id)
+    SORTKEY(created_at)
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id

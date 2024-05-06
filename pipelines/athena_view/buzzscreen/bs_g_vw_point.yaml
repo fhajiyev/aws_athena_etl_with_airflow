@@ -1,0 +1,65 @@
+---
+pipeline_key: bs_g_vw_point
+pipeline_type: athena_view
+pipeline_dag_configs:
+  start_date: 2020-07-21 12:00:00
+  schedule_interval: "0 * * * *"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency
+    - trigger: sla_miss
+      args:
+        channel: data-emergency
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: athena_deduplicate_bs_g_point
+    timedelta_hours: 0
+
+downstream_dependencies:
+  - dag_id: athena_process_statssvc_g_unit_point
+    task_id: generate_uuid
+  - dag_id: athena_process_bs_g_statistics_point
+    task_id: generate_uuid
+  - dag_id: check_data_bs_g_vw_point_deduplicated
+    task_id: generate_uuid
+
+athena:
+  query: |
+    CREATE OR REPLACE VIEW {database}.{table}
+    AS WITH dup_records AS (
+      SELECT
+        device_id, version, unit_id, unit_device_token, requested, point_type, title, sub_type, campaign_id, amount, base_reward, deposit_sum, created_at, scatter, slot, updated_at
+      FROM {env}_buzzscreen.g_stream_point
+      WHERE
+        partition_timestamp >= TIMESTAMP '{execution_date}' - interval '7' day - interval '1' hour
+        AND partition_timestamp < TIMESTAMP '{next_execution_date}'
+        AND created_at >= TIMESTAMP '{execution_date}' - interval '7' day
+        AND created_at < TIMESTAMP '{next_execution_date}'
+    ), dup_records_row_num AS (
+      SELECT
+        device_id, version, unit_id, unit_device_token, requested, point_type, title, sub_type, campaign_id, amount, base_reward, deposit_sum, created_at, scatter, slot, updated_at,
+        RANK() OVER (
+            PARTITION BY device_id, version
+            ORDER BY requested DESC, updated_at DESC
+        ) AS row_num
+      FROM dup_records
+    ), dedup_records_recent_7days AS (
+      SELECT DISTINCT
+        device_id, version, unit_id, unit_device_token, requested, point_type, title, sub_type, campaign_id, amount, base_reward, deposit_sum, created_at, scatter, slot, updated_at,
+        DATE_TRUNC('hour', created_at) AS partition_timestamp
+      FROM dup_records_row_num
+      WHERE row_num = 1
+    )
+    SELECT device_id, version, unit_id, unit_device_token, requested, point_type, title, sub_type, campaign_id, amount, base_reward, deposit_sum, created_at, scatter, slot, updated_at, partition_timestamp
+    FROM dedup_records_recent_7days
+    UNION ALL
+    SELECT device_id, version, unit_id, unit_device_token, requested, point_type, title, sub_type, campaign_id, amount, base_reward, deposit_sum, created_at, scatter, slot, updated_at, partition_timestamp
+    FROM {env}_buzzscreen.g_point
+  database: "{env}_buzzscreen"
+  table: g_vw_point

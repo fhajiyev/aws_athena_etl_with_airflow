@@ -1,0 +1,76 @@
+# CREATE TABLE `abusing_whitelist` (
+#   `id` int(11) NOT NULL AUTO_INCREMENT,
+#   `unit_id` bigint(20) DEFAULT NULL,
+#   `sub_publisher_id` varchar(50) NOT NULL,
+#   `ip` int(10) unsigned NOT NULL,
+#   `publisher_user_id` varchar(255) NOT NULL,
+#   `is_active` tinyint(1) NOT NULL,
+#   `reason` longtext NOT NULL,
+#   `created_at` datetime(6) NOT NULL,
+#   `updated_at` datetime(6) NOT NULL,
+#   `app_id` bigint(20),
+#   `service_id` bigint(20),
+#   PRIMARY KEY (`id`),
+#   KEY `abusing_whitelist_957b527b` (`ip`),
+#   KEY `abusing_whitelist_publisher_user_id_e53dc1b2_uniq` (`publisher_user_id`),
+#   KEY `abusing_whitelist_sub_publisher_id_ddecc3a2_uniq` (`sub_publisher_id`),
+#   KEY `abusing_whitelist_unit_id_27688363_uniq` (`unit_id`),
+#   KEY `abusing_whitelist_f382adfe` (`app_id`),
+#   KEY `abusing_whitelist_b0dc1e29` (`service_id`)
+# ) ENGINE=InnoDB AUTO_INCREMENT=368 DEFAULT CHARSET=utf8;
+#
+
+---
+pipeline_key: ba_ls_abusing_whitelist
+pipeline_type: mysql_unload_s3
+pipeline_dag_configs:
+  start_date: 2020-09-01 17:00:00
+  schedule_interval: "0 17 * * *"
+mysql:
+  conn_id: buzzad_mysql
+  table_name: abusing_whitelist
+  increment_key: id
+  increment_key_type: dump
+  fields:
+  - id
+  - unit_id
+  - sub_publisher_id
+  - ip
+  - publisher_user_id
+  - is_active
+  - reason
+  - created_at
+  - updated_at
+  - app_id
+  - service_id
+s3:
+  bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  prefix: buzzad/landing_snapshot/abusing_whitelist/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzad_abusing_whitelist
+  data_format: parquet
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id                   BIGINT,
+      unit_id              BIGINT,
+      sub_publisher_id     VARCHAR(255),
+      ip                   BIGINT,
+      publisher_user_id    VARCHAR(255),
+      is_active            SMALLINT,
+      reason               VARCHAR(2048),
+      created_at           TIMESTAMP,
+      updated_at           TIMESTAMP,
+      app_id               BIGINT,
+      service_id           BIGINT
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY");
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzad"
+  table: ls_abusing_whitelist
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/buzzad/landing_snapshot/abusing_whitelist"
+  partition:
+    key: partition_timestamp
+    value: "{{execution_date.strftime('%Y-%m-%d %H:00:00')}}"
+    subdir: "year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}"

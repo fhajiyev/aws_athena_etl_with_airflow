@@ -1,0 +1,12 @@
+pipeline_key: ba_statistics_unit_lineitem_fill
+pipeline_type: emr_spark_transform
+pipeline_dag_configs:
+  start_date: 2020-02-10 08:00:00
+  schedule_interval: "@hourly"
+
+job_flow:
+  overrides: {}
+
+steps:
+  - name: "Update ba_statistics_unit_lineitem_fill"
+    script_location: "s3://buzzvil-airflow/{{ var.value.get('server_env', 'prod') }}/emr/scripts/buzzad/ba_statistics_unit_lineitem_fill.py"

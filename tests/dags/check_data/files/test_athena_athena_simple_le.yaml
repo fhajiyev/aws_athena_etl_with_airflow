@@ -1,0 +1,35 @@
+---
+pipeline_key: athena_test
+pipeline_type: check_data
+pipeline_dag_configs:
+  start_date: 2020-10-22 15:00:00
+  schedule_interval: "0 * * * *"
+  catch_up: False
+
+augend:
+  data_source:
+    type: athena
+    database: prod_buzzad
+    workgroup: buzzad
+  query: |
+    SELECT
+      COUNT(*)
+    FROM
+      l_vw_unit
+
+addend:
+  data_source:
+    type: athena
+    database: prod_buzzad
+    workgroup: buzzad
+  query: |
+    SELECT
+      COUNT(*)
+    FROM
+      l_vw_unit
+
+comparison:
+  augend_multiplier: 1
+  addend_multiplier: -1
+  operator: le
+  threshold: 0.0

@@ -1,0 +1,54 @@
+---
+pipeline_key: ba_statistics_unit_lineitem_view
+pipeline_type: redshift_query
+pipeline_dag_configs:
+  start_date: 2020-11-20 00:00:00
+  # schedule_interval: "0 * * * *"
+redshift:
+  query: |
+    BEGIN;
+    DROP VIEW IF EXISTS ba_statistics_unit_lineitem;
+    CREATE VIEW ba_statistics_unit_lineitem AS
+    SELECT
+        u.id AS unit_id,
+        u.name AS unit_name,
+        l.id AS lineitem_id,
+        l.item_name AS lineitem_name,
+        l.adnetwork_id,
+        u.currency AS unit_currency,
+        l.currency AS lineitem_currency,
+        l.revenue_type,
+        l.platform,
+        l.adnetwork_campaign_id,
+        l.owner_id AS lineitem_owner_id,
+        au.name AS lineitem_owner_name,
+        l.organization_id AS lineitem_organization_id,
+        s.data_at,
+        s.impression_count,
+        s.click_count,
+        s.conversion_count,
+        s.sales_total AS lineitem_sales_sum,
+        s.unit_sales_total AS unit_sales_sum,
+        s.reward_total AS reward_sum,
+        l.country
+    FROM (
+            SELECT
+              s.lineitem_id,
+              s.unit_id,
+              s.data_at,
+              SUM(s.impression_count) AS impression_count,
+              SUM(s.click_count) AS click_count,
+              SUM(s.conversion_count) AS conversion_count,
+              SUM(s.sales_total) AS sales_total,
+              SUM(s.unit_sales_total) AS unit_sales_total,
+              SUM(s.reward_total) AS reward_total
+            FROM
+              public.ba_statistics_unit_creative s
+            GROUP BY
+              s.lineitem_id, s.unit_id, s.data_at
+          ) s
+    LEFT JOIN public.ba_unit u ON s.unit_id = u.id
+    LEFT JOIN public.ba_lineitem l ON s.lineitem_id = l.id
+    LEFT JOIN public.ba_admin_user au ON l.owner_id = au.id
+    WITH NO SCHEMA BINDING;
+    END;

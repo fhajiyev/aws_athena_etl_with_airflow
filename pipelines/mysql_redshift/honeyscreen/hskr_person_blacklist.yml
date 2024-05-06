@@ -1,0 +1,49 @@
+
+---
+pipeline_key: hskr_person_blacklist
+pipeline_type: mysql_redshift
+incremental_sync: False
+
+mysql:
+  conn_id: honeyscreen_kr_mysql
+  table_name: mobile_user_blacklist
+  fields:
+   - id
+   - user_id
+   - type
+   - steam_amount
+   - memo
+   - created_at
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: hskr_person_blacklist
+  fields:
+   - id
+   - user_id
+   - type
+   - steam_amount
+   - memo
+   - created_at
+  copy_method: replace
+  create_table_syntax: |   
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                 INT8             NOT NULL,
+      user_id            INT8             NOT NULL                 ENCODE ZSTD,
+      type               VARCHAR(4)       NOT NULL                 ENCODE ZSTD,
+      steam_amount       INT8             NOT NULL                 ENCODE ZSTD,
+      memo               VARCHAR(10240)   DEFAULT NULL             ENCODE LZO,
+      created_at         TIMESTAMP        NOT NULL                 ENCODE ZSTD,
+      PRIMARY KEY(id)
+    )
+    DISTSTYLE ALL
+    SORTKEY(id)
+    ;
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id

@@ -1,0 +1,55 @@
+# CREATE TABLE `user_profiles` (
+#   `id` int(11) NOT NULL AUTO_INCREMENT,
+#   `account_id` varchar(100) NOT NULL,
+#   `gender` varchar(1) DEFAULT NULL,
+#   `year_of_birth` int(11) DEFAULT NULL,
+#   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+#   `updated_at` datetime DEFAULT CURRENT_TIMESTAMP,
+#   PRIMARY KEY (`id`),
+#   UNIQUE KEY `unique_index_account_id` (`account_id`)
+# ) ENGINE=InnoDB AUTO_INCREMENT=31737 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+---
+pipeline_key: bridgesvc_ls_user_profiles
+pipeline_type: mysql_unload_s3
+pipeline_dag_configs:
+  start_date: 2020-10-14 17:00:00
+  schedule_interval: "0 17 * * *"
+mysql:
+  conn_id: bridgesvc_mysql
+  table_name: user_profiles
+  increment_key: id
+  increment_key_type: numeric
+  fields:
+  - id
+  - account_id
+  - gender
+  - year_of_birth
+  - created_at
+  - updated_at
+s3:
+  bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  prefix: bridgesvc/landing_snapshot/user_profiles/year={year}/month={month}/day={day}/hour={hour}
+  file_key: bridgesvc_ls_user_profiles
+  data_format: parquet
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id              BIGINT,
+      account_id      VARCHAR(255),
+      gender          VARCHAR(1),
+      year_of_birth   BIGINT,
+      created_at      TIMESTAMP,
+      updated_at      TIMESTAMP
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY");
+  database: "{{ var.value.get('server_env', 'prod') }}_bridgesvc"
+  table: ls_user_profiles
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/bridgesvc/landing_snapshot/user_profiles"
+  partition:
+    key: partition_timestamp
+    value: "{{execution_date.strftime('%Y-%m-%d %H:00:00')}}"
+    subdir: "year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}"
+

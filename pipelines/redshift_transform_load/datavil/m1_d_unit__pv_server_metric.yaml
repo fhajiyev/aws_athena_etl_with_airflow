@@ -1,0 +1,89 @@
+# Note that
+#
+---
+pipeline_key: m1_d_unit__pv_server_metric
+pipeline_type: redshift_transform_load
+pipeline_dag_configs:
+  start_date: 2020-11-11 16:00:00
+  schedule_interval: "0 16 * * *"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency
+    - trigger: sla_miss
+      args:
+        channel: data-emergency
+    - trigger: retry
+      args:
+        channel: data-warning
+
+transform:
+  select_query: |
+    WITH
+    units AS (
+        SELECT
+            id,
+            name,
+            unit_type
+        FROM
+            ba_unit u
+    )
+      SELECT
+          date_trunc('day',alc.created_at + interval '9 hour') AS kst_at,
+          u.id                    AS unit_id,
+          u.name                  AS unit_name,
+          u.unit_type             AS unit_type,
+          count(DISTINCT alc.request_id) AS pv
+      FROM
+          ba_impression imp
+            INNER JOIN units u ON
+              imp.unit_id = u.id
+            INNER JOIN ba_allocation alc ON
+              imp.initial_allocation_id = alc.request_id
+
+      WHERE
+          imp.created_at >= TIMESTAMP'{start_time}' - interval '1 hour' and
+          imp.created_at < TIMESTAMP'{end_time}' AND
+          alc.created_at >= TIMESTAMP'{start_time}' - interval '1 hour'  and
+          alc.created_at < TIMESTAMP'{end_time}' - interval '1 hour'
+      GROUP BY
+          1, 2, 3, 4
+  delete_query : |
+    DELETE
+    FROM
+      datavil.m1_d_unit__pv_server_metric
+    WHERE
+      kst_at >= TIMESTAMP'{start_time}' - interval '16 hour' + interval '24 hour' AND
+      kst_at < TIMESTAMP'{end_time}' - interval '16 hour' + interval '24 hour'
+
+
+redshift:
+  conn_id: redshift_de
+  table_name: datavil.m1_d_unit__pv_server_metric
+  fields:
+  - kst_at
+  - unit_id
+  - unit_name
+  - unit_type
+  - pv
+  unique_key_list:
+  - kst_at
+  - unit_id
+  increment_key: kst_at
+  increment_key_type: timestamp
+  copy_method: incremental
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      kst_at      TIMESTAMP       ENCODE AZ64,
+      unit_id     BIGINT          ENCODE AZ64,
+      unit_name   VARCHAR(1024)   ENCODE ZSTD,
+      unit_type   VARCHAR(64)     ENCODE ZSTD,
+      pv          INT             ENCODE AZ64,
+      UNIQUE(kst_at, unit_id)
+    )
+    DISTKEY(unit_id)
+    SORTKEY(kst_at)
+    ;

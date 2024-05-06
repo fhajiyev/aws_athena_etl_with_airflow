@@ -1,0 +1,56 @@
+#  For
+#
+#
+---
+pipeline_key: ba_l_weather
+pipeline_type: mysql_s3_athena
+pipeline_dag_configs:
+  start_date: 2020-08-05 00:00:00
+  schedule_interval: "0 * * * *"
+delay_seconds: 86400
+mysql:
+  conn_id: buzzad_mysql
+  table_name: hourly_weather_information
+  increment_key: data_at
+  increment_key_type: timestamp
+  fields:
+    - id
+    - country
+    - region
+    - data_at
+    - weather_type
+    - value
+    - grade
+    - updated_at
+    - created_at
+s3:
+  bucket: "prod-buzzvil-data-lake"
+  prefix: "buzzad/landing/weather/year={year}/month={month}/day={day}/hour={hour}"
+  file_key: buzzad-weather
+  data_format: json
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id                      BIGINT,
+      country                 VARCHAR(2),
+      region                  VARCHAR(10),
+      data_at                 TIMESTAMP,
+      weather_type            VARCHAR(10),
+      value                   DECIMAL(18,4),
+      grade                   SMALLINT,
+      created_at              TIMESTAMP,
+      updated_at              TIMESTAMP
+    )
+    PARTITIONED BY (partition_timestamp TIMESTAMP)
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'ignore.malformed.json'='true'
+    )
+    LOCATION '{location}';
+  database: "prod_buzzad"
+  table: l_weather
+  location: "s3://prod-buzzvil-data-lake/buzzad/landing/weather"
+  partition:
+    name: partition_timestamp
+    type: hourly

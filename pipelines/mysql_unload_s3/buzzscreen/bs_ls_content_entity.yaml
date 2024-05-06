@@ -1,0 +1,72 @@
+# CREATE TABLE `content_entity` (
+#   `id` int(11) NOT NULL AUTO_INCREMENT,
+#   `content_id` bigint(20) NOT NULL,
+#   `source` varchar(63) NOT NULL,
+#   `entity_type` varchar(63) NOT NULL,
+#   `entity_name` varchar(63) NOT NULL,
+#   `sentiment` double NOT NULL,
+#   `relevance` double NOT NULL,
+#   `count` smallint(5) unsigned NOT NULL,
+#   `emotion` varchar(255) NOT NULL,
+#   `confidence` double DEFAULT NULL,
+#   `disambiguation` varchar(1023) NOT NULL,
+#   `created_at` datetime(6) NOT NULL,
+#   PRIMARY KEY (`id`),
+#   UNIQUE KEY `content_entity_content_id_30be02c5_uniq` (`content_id`,`source`,`entity_type`,`entity_name`)
+# ) ENGINE=InnoDB AUTO_INCREMENT=19711840 DEFAULT CHARSET=utf8;
+---
+pipeline_key: bs_ls_content_entity
+pipeline_type: mysql_unload_s3
+pipeline_dag_configs:
+  start_date: 2020-10-01 17:00:00
+  schedule_interval: "0 17 * * *"
+mysql:
+  conn_id: buzzscreen_mysql
+  table_name: content_entity
+  increment_key: id
+  increment_key_type: numeric
+  fields:
+  - id
+  - content_id
+  - source
+  - entity_type
+  - entity_name
+  - sentiment
+  - relevance
+  - count
+  - emotion
+  - confidence
+  - disambiguation
+  - created_at
+s3:
+  bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  prefix: buzzscreen/landing_snapshot/content_entity/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzscreen_content_entity
+  data_format: parquet
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id               BIGINT,
+      content_id       BIGINT,
+      source           VARCHAR(255),
+      entity_type      VARCHAR(255),
+      entity_name      VARCHAR(255),
+      sentiment        DOUBLE,
+      relevance        DOUBLE,
+      count            BIGINT,
+      emotion          VARCHAR(1024),
+      confidence       DOUBLE,
+      disambiguation   VARCHAR(4096),
+      created_at       TIMESTAMP
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY");
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzscreen"
+  table: ls_content_entity
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/buzzscreen/landing_snapshot/content_entity"
+  partition:
+    key: partition_timestamp
+    value: "{{execution_date.strftime('%Y-%m-%d %H:00:00')}}"
+    subdir: "year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}"

@@ -1,0 +1,191 @@
+#  For
+#
+#
+---
+pipeline_key: bs_content_campaigns
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: buzzscreen_mysql
+  table_name: content_campaigns
+  fields:
+  - id
+  - name
+  - title
+  - description
+  - categories
+  - image
+  - media_type
+  - landing_type
+  - clean_mode
+  - clean_link
+  - status
+  - score
+  - json
+  - start_date
+  - end_date
+  - week_slot
+  - display_type
+  - display_weight
+  - ipu
+  - dipu
+  - tipu
+  - target_age_min
+  - target_age_max
+  - registered_days_min
+  - registered_days_max
+  - target_gender
+  - target_language
+  - target_carrier
+  - target_region
+  - target_app
+  - custom_target_1
+  - custom_target_2
+  - custom_target_3
+  - target_unit
+  - country
+  - timezone
+  - organization_id
+  - owner_id
+  - channel_id
+  - provider_id
+  - natural_id
+  - template_id
+  - is_enabled
+  - is_ctr_filter_off
+  - created_at
+  - updated_at
+  - published_at
+  - tags
+  - click_url
+  - target_sdk_max
+  - target_sdk_min
+  increment_key: updated_at
+  increment_key_type: timestamp
+  unique_key_list:
+  - id
+  batch_size: 100000
+
+redshift:
+  table_name: bs_content_campaigns
+  fields:
+  - id
+  - name
+  - title
+  - description
+  - categories
+  - image
+  - media_type
+  - landing_type
+  - clean_mode
+  - clean_link
+  - status
+  - score
+  - json
+  - start_date
+  - end_date
+  - week_slot
+  - display_type
+  - display_weight
+  - ipu
+  - dipu
+  - tipu
+  - target_age_min
+  - target_age_max
+  - registered_days_min
+  - registered_days_max
+  - target_gender
+  - target_language
+  - target_carrier
+  - target_region
+  - target_app
+  - custom_target_1
+  - custom_target_2
+  - custom_target_3
+  - target_unit
+  - country
+  - timezone
+  - organization_id
+  - owner_id
+  - channel_id
+  - provider_id
+  - natural_id
+  - template_id
+  - is_enabled
+  - is_ctr_filter_off
+  - created_at
+  - updated_at
+  - published_at
+  - tags
+  - click_url
+  - target_sdk_max
+  - target_sdk_min
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                    INT8            NOT NULL       ENCODE ZSTD,
+      name                  VARCHAR(1024)   DEFAULT NULL   ENCODE LZO,
+      title                 VARCHAR(1024)   DEFAULT NULL   ENCODE LZO,
+      description           VARCHAR(1024)   DEFAULT NULL   ENCODE LZO,
+      categories            VARCHAR(255)    DEFAULT NULL   ENCODE LZO,
+      image                 VARCHAR(255)    DEFAULT NULL   ENCODE LZO,
+      media_type            INT2            NOT NULL       ENCODE ZSTD,
+      landing_type          INT2            NOT NULL       ENCODE ZSTD,
+      clean_mode            INT2            DEFAULT NULL   ENCODE ZSTD,
+      clean_link            VARCHAR(255)    DEFAULT NULL   ENCODE LZO,
+      status                INT2            NOT NULL       ENCODE ZSTD,
+      score                 FLOAT           NOT NULL       ENCODE ZSTD,
+      json                  VARCHAR(500)    NOT NULL       ENCODE LZO,
+
+      start_date            TIMESTAMP       NOT NULL       ENCODE ZSTD,
+      end_date              TIMESTAMP       NOT NULL       ENCODE ZSTD,
+      week_slot             VARCHAR(600)    DEFAULT NULL   ENCODE LZO,
+      display_type          VARCHAR(1)      NOT NULL       ENCODE ZSTD,
+      display_weight        INT8            NOT NULL       ENCODE ZSTD,
+      ipu                   INT8            DEFAULT NULL   ENCODE ZSTD,
+      dipu                  INT8            DEFAULT NULL   ENCODE ZSTD,
+      tipu                  INT8            DEFAULT NULL   ENCODE ZSTD,
+
+      target_age_min        INT2            DEFAULT NULL   ENCODE ZSTD,
+      target_age_max        INT2            DEFAULT NULL   ENCODE ZSTD,
+      registered_days_min   INT2            DEFAULT NULL   ENCODE ZSTD,
+      registered_days_max   INT2            DEFAULT NULL   ENCODE ZSTD,
+      target_gender         VARCHAR(1)      DEFAULT NULL   ENCODE ZSTD,
+      target_language       VARCHAR(10)     DEFAULT NULL   ENCODE ZSTD,
+      target_carrier        VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+      target_region         VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+      target_app            VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+      custom_target_1       VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+      custom_target_2       VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+      custom_target_3       VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+      target_unit           VARCHAR(500)    DEFAULT NULL   ENCODE LZO,
+
+      country               VARCHAR(2)      NOT NULL       ENCODE ZSTD,
+      timezone              VARCHAR(50)     NOT NULL       ENCODE ZSTD,
+      organization_id       INT8            NOT NULL       ENCODE ZSTD,
+      owner_id              INT8            NOT NULL       ENCODE ZSTD,
+      channel_id            INT8            DEFAULT NULL   ENCODE ZSTD,
+      provider_id           INT8            DEFAULT NULL   ENCODE ZSTD,
+      natural_id            VARCHAR(755)    DEFAULT NULL   ENCODE ZSTD,
+      template_id           INT2            NOT NULL       ENCODE ZSTD,
+      is_enabled            INT2            NOT NULL       ENCODE ZSTD,
+      is_ctr_filter_off     INT2            NOT NULL       ENCODE ZSTD,
+      created_at            TIMESTAMP       NOT NULL       ENCODE ZSTD,
+      updated_at            TIMESTAMP       NOT NULL       ENCODE ZSTD,
+      published_at          TIMESTAMP       NULL           ENCODE ZSTD,
+      tags                  VARCHAR(1024)   DEFAULT NULL   ENCODE LZO,
+      click_url             VARCHAR(1024)   NOT NULL       ENCODE LZO,
+      target_sdk_max        INT8            DEFAULT NULL   ENCODE ZSTD,
+      target_sdk_min        INT8            DEFAULT NULL   ENCODE ZSTD,
+      PRIMARY KEY(id)
+    )
+    DISTKEY (id)
+    SORTKEY (updated_at, created_at)
+    ;
+
+  increment_key: updated_at
+  increment_key_type: timestamp
+  unique_key_list:
+  - id

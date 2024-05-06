@@ -1,0 +1,52 @@
+---
+pipeline_key: billingsvc_adjustments
+pipeline_type: mysql_redshift
+incremental_sync: False
+
+mysql:
+  conn_id: billingsvc_mysql
+  table_name: adjustments
+  increment_key: id
+  increment_key_type: dump
+  fields:
+  - id
+  - payout_buzzvil
+  - payout_owner
+  - reason
+  - user_id
+  - updated_at
+  - created_at
+  - payout_id
+  unique_key_list:
+  - id
+redshift:
+  table_name: billingsvc_adjustments
+  fields:
+  - id
+  - payout_buzzvil
+  - payout_owner
+  - reason
+  - user_id
+  - updated_at
+  - created_at
+  - payout_id
+  copy_method: replace
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id              BIGINT           ENCODE AZ64,
+      payout_buzzvil  DECIMAL(27,9)    ENCODE AZ64,
+      payout_owner    DECIMAL(27,9)    ENCODE AZ64,
+      reason          VARCHAR(1024)    ENCODE ZSTD,
+      user_id         BIGINT           ENCODE AZ64,
+      updated_at      TIMESTAMP        ENCODE AZ64,
+      created_at      TIMESTAMP        ENCODE AZ64,
+      payout_id       BIGINT           ENCODE AZ64
+    )
+    DISTSTYLE ALL
+    SORTKEY(id)
+    ;
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id

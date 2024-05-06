@@ -1,0 +1,80 @@
+---
+pipeline_key: ba_lineitem_ecpm_fill_statistics
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: buzzad_mysql
+  table_name: lineitem_ecpm_fill_statistics
+  fields:
+  - id
+  - lineitem_id
+  - data_at
+  - revenue_adn
+  - ecpm_adn
+  - ecpm_buzzvil
+  - ecpm_forecast
+  - created_at
+  - updated_at
+  - fill_rate
+  - dashboard_buzzad_rate
+  - is_automated
+  - impression_adn
+  - impression_buzzvil
+  - display_priority
+  - display_weight
+  - revenue_forecast
+  increment_key: updated_at
+  increment_key_type: timestamp
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: ba_lineitem_ecpm_fill_statistics
+  fields:
+  - id
+  - lineitem_id
+  - data_at
+  - revenue_adn
+  - ecpm_adn
+  - ecpm_buzzvil
+  - ecpm_forecast
+  - created_at
+  - updated_at
+  - fill_rate
+  - dashboard_buzzad_rate
+  - is_automated
+  - impression_adn
+  - impression_buzzvil
+  - display_priority
+  - display_weight
+  - revenue_forecast
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                      INT8            NOT NULL       ENCODE ZSTD,
+      lineitem_id             INT8            NOT NULL       ENCODE ZSTD,
+      data_at                 TIMESTAMP       NOT NULL       ENCODE ZSTD,
+      revenue_adn             DECIMAL(18,9)   DEFAULT NULL   ENCODE ZSTD,
+      ecpm_adn                DECIMAL(10,5)   DEFAULT NULL   ENCODE ZSTD,
+      ecpm_buzzvil            DECIMAL(10,5)   DEFAULT NULL   ENCODE ZSTD,
+      ecpm_forecast           DECIMAL(10,5)   DEFAULT NULL   ENCODE ZSTD,
+      created_at              TIMESTAMP       NOT NULL       ENCODE ZSTD,
+      updated_at              TIMESTAMP       NOT NULL       ENCODE ZSTD,
+      fill_rate               DECIMAL(10,5)   DEFAULT NULL   ENCODE ZSTD,
+      dashboard_buzzad_rate   DECIMAL(10,5)   DEFAULT NULL   ENCODE ZSTD,
+      is_automated            BOOLEAN         NULL           ENCODE ZSTD,
+      impression_adn          INT8            NOT NULL       ENCODE ZSTD,
+      impression_buzzvil      INT8            NOT NULL       ENCODE ZSTD,
+      display_priority        INT4            DEFAULT NULL   ENCODE ZSTD,
+      display_weight          INT4            DEFAULT NULL   ENCODE ZSTD,
+      revenue_forecast        DECIMAL(18,9)   DEFAULT NULL   ENCODE ZSTD
+    )
+    DISTKEY(lineitem_id)
+    SORTKEY(updated_at)
+    ;
+  increment_key: updated_at
+  increment_key_type: timestamp
+  unique_key_list:
+  - id

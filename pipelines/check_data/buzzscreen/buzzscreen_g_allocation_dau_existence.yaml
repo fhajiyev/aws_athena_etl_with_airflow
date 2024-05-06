@@ -1,0 +1,31 @@
+# This pipeline checks whether bs_allocation_dau was generated properly within the allowed SLO
+# Thus, this DAG does not have upstream_dependency on redshift_query_bs_allocation_dau
+
+# SLO = 3 hours after midnight kst
+# SLO is subject to change
+# - INTERVAL '20 HOURS' + INTERVAL '24 HOURS' is required to match the cron schedule
+---
+pipeline_key: buzzscreen_g_allocation_dau_timeliness
+pipeline_type: check_data
+pipeline_dag_configs:
+  start_date: 2020-11-24 20:00:00
+  schedule_interval: "0 20 * * *"
+  depends_on_past: False
+
+augend:
+  data_source:
+    type: redshift
+    conn_id: redshift
+  query: |
+    SELECT
+      COUNT(*) AS result
+    FROM
+      bs_allocation_dau
+    WHERE
+      kst_at >= TIMESTAMP'{start_time}' - INTERVAL '20 HOURS' + INTERVAL '24 HOURS' AND
+      kst_at < TIMESTAMP'{end_time}' - INTERVAL '20 HOURS' + INTERVAL '24 HOURS'
+  multiplier: 1
+
+comparison:
+  operator: gt
+  threshold: 0

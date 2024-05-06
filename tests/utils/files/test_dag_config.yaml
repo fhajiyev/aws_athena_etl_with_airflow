@@ -1,0 +1,15 @@
+---
+pipeline_key: pipeline_1
+pipeline_type: test
+pipeline_dag_configs:
+  start_date: 2020-01-01 00:00:00
+  schedule_interval: "0 * * * *"
+execution_delay: 600
+upstream_dependencies:
+  - dag_id: athena_catalog_ba_l_lineitem
+    timedelta_hours: 0
+  - dag_id: athena_catalog_ba_l_unit
+    timedelta_hours: 0
+downstream_dependencies:
+  - dag_id: redshift_transform_sync_ba_alloc_nru
+    task_id: generate_uuid

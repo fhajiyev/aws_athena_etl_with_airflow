@@ -1,0 +1,47 @@
+---
+pipeline_key: sj_abuser
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: slidejoy_mysql
+  table_name: tbl_abuser
+  fields:
+  - userId
+  - groupId
+  - type
+  - message
+  - creationDate
+  - updateDate
+  increment_key: creationDate
+  increment_key_type: timestamp
+  unique_key_list:
+  - userId
+
+redshift:
+  table_name: sj_abuser
+  fields:
+  - userId
+  - groupId
+  - type
+  - message
+  - creationDate
+  - updateDate
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      userId         VARCHAR(64)    DEFAULT NULL                 ENCODE ZSTD,
+      groupId        INT4           DEFAULT '0'                  ENCODE ZSTD,
+      type           INT2           DEFAULT '1'                  ENCODE ZSTD,
+      message        VARCHAR(200)   DEFAULT NULL                 ENCODE ZSTD,
+      creationDate   TIMESTAMP      DEFAULT NULL                 ENCODE ZSTD,
+      updateDate     TIMESTAMP      DEFAULT NULL                 ENCODE ZSTD
+    )
+    DISTSTYLE ALL
+    SORTKEY(creationDate, updateDate)
+    ;
+  increment_key: creationDate
+  increment_key_type: timestamp
+  unique_key_list:
+  - userId

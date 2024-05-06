@@ -1,0 +1,71 @@
+#CREATE TABLE `ad_videos` (
+#  `id` int(11) NOT NULL AUTO_INCREMENT,
+#  `video_type` varchar(16) NOT NULL,
+#  `external_id` varchar(128) NOT NULL,
+#  `overlay_image_url` varchar(1024) NOT NULL,
+#  `hls_video_url` varchar(1024) NOT NULL,
+#  `duration` double DEFAULT NULL,
+#  `visible_final` tinyint(1) NOT NULL,
+#  `end_time` int(10) unsigned DEFAULT NULL,
+#  `end_time_type` varchar(32) NOT NULL,
+#  `created_at` datetime(6) NOT NULL,
+#  `updated_at` datetime(6) NOT NULL,
+#  `mp4_video_url` varchar(1024) NOT NULL,
+#  PRIMARY KEY (`id`)
+#) ENGINE=InnoDB AUTO_INCREMENT=2976 DEFAULT CHARSET=utf8
+---
+pipeline_key: ba_ls_ad_video
+pipeline_type: mysql_unload_s3
+pipeline_dag_configs:
+  start_date: 2020-09-01 17:00:00
+  schedule_interval: "0 17 * * *"
+mysql:
+  conn_id: buzzad_mysql
+  table_name: ad_videos
+  increment_key: id
+  increment_key_type: dump
+  fields:
+  - id
+  - video_type
+  - external_id
+  - overlay_image_url
+  - hls_video_url
+  - duration
+  - visible_final
+  - end_time
+  - end_time_type
+  - mp4_video_url
+  - created_at
+  - updated_at
+s3:
+  bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  prefix: buzzad/landing_snapshot/ad_video/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzad_ad_video
+  data_format: parquet
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id                  INT,
+      video_type          VARCHAR(4),
+      external_id         INT,
+      overlay_image_url   VARCHAR(1024),
+      hls_video_url       VARCHAR(1024),
+      duration            DOUBLE,
+      visible_final       TINYINT,
+      end_time            INT,
+      end_time_type       VARCHAR(16),
+      mp4_video_url       VARCHAR(1024),
+      created_at          TIMESTAMP,
+      updated_at          TIMESTAMP
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY");
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzad"
+  table: ls_ad_video
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/buzzad/landing_snapshot/ad_video"
+  partition:
+    key: partition_timestamp
+    value: "{{execution_date.strftime('%Y-%m-%d %H:00:00')}}"
+    subdir: "year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}"

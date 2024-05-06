@@ -1,0 +1,119 @@
+---
+pipeline_key: ba_uncover_data
+pipeline_type: redshift_s3_unload
+pipeline_dag_configs:
+  start_date: 2020-08-05 01:00:00
+  schedule_interval: "0 1 * * *"
+
+s3:
+  bucket: buzzvil-uncover-data
+  prefix: "{{ execution_date.strftime('%Y') }}/{{ execution_date.strftime('%m') }}/{{ execution_date.strftime('%d') }}"
+
+redshift:
+  unload_option: uncover_csv
+  select_query: |
+    WITH
+    units AS (
+        SELECT
+            id
+        FROM
+            ba_unit
+        WHERE
+            organization_id = 6064
+    )
+    SELECT
+        lineitem_id,
+        NULL AS content_id,
+        NULL AS content_provider_id,
+        NULL AS content_channel_id,
+        NULL AS content_url,
+        \'impression\' as event,
+        ifa as idfa,
+        ip,
+        country,
+        year_of_birth,
+        sex as gender,
+        created_at
+    FROM
+        ba_impression
+    WHERE
+        created_at >= TIMESTAMP\'{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}\' - INTERVAL \'1 HOUR\' AND
+        created_at < TIMESTAMP\'{{ next_execution_date.strftime('%Y-%m-%d %H:00:00') }}\' - INTERVAL \'1 HOUR\' AND
+        unit_id in (SELECT id FROM units)
+
+    UNION ALL
+
+    SELECT
+        lineitem_id,
+        NULL AS content_id,
+        NULL AS content_provider_id,
+        NULL AS content_channel_id,
+        NULL AS content_url,
+        \'click\' as event,
+        ifa as idfa,
+        ip,
+        country,
+        year_of_birth,
+        sex as gender,
+        created_at
+    FROM
+        ba_click
+    WHERE
+        created_at >= TIMESTAMP\'{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}\' - INTERVAL \'1 HOUR\' AND
+        created_at < TIMESTAMP\'{{ next_execution_date.strftime('%Y-%m-%d %H:00:00') }}\' - INTERVAL \'1 HOUR\' AND
+        unit_id in (SELECT id FROM units)
+
+    UNION ALL
+
+    SELECT
+        s.lineitem_id::BIGINT,
+        s.content_id::BIGINT,
+        c.provider_id AS content_provider_id,
+        c.channel_id AS content_channel_id,
+        c.click_url AS content_url,
+        s.event,
+        s.idfa,
+        s.ip,
+        s.country,
+        s.year_of_birth,
+        s.gender,
+        s.created_at
+    FROM
+        (
+            SELECT
+                NULL AS lineitem_id,
+                campaign_id as content_id,
+                \'impression\' as event,
+                ifa as idfa,
+                ip,
+                country,
+                year_of_birth,
+                sex as gender,
+                created_at
+            FROM
+                bs_impression
+            WHERE
+                created_at >= TIMESTAMP\'{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}\' - INTERVAL \'1 HOUR\' AND
+                created_at < TIMESTAMP\'{{ next_execution_date.strftime('%Y-%m-%d %H:00:00') }}\' - INTERVAL \'1 HOUR\' AND
+                unit_id in (SELECT id FROM units)
+
+            UNION ALL
+
+            SELECT
+                NULL AS lineitem_id,
+                campaign_id as content_id,
+                \'click\' as event,
+                ifa as idfa,
+                ip,
+                country,
+                year_of_birth,
+                sex as gender,
+                created_at
+            FROM
+                bs_click
+            WHERE
+                created_at >= TIMESTAMP\'{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}\' - INTERVAL \'1 HOUR\' AND
+                created_at < TIMESTAMP\'{{ next_execution_date.strftime('%Y-%m-%d %H:00:00') }}\' - INTERVAL \'1 HOUR\' AND
+                unit_id in (SELECT id FROM units)
+        ) s INNER JOIN bs_content_campaigns c ON
+            s.content_id = c.id

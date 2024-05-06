@@ -1,0 +1,52 @@
+---
+pipeline_key: ba_o_product_feed
+pipeline_type: athena_process_filter
+pipeline_dag_configs:
+  start_date: 2019-12-26 08:20:00
+  schedule_interval: "20 * * * *"
+filter:
+  name: product_feed_id
+  values:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    - 15
+athena:
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+        format = 'TEXTFILE',
+        field_delimiter = '\t',
+        external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+        SELECT
+          id, code, name, price, currency, landing_url, image_url, original_image_url, is_active, normal_price,
+          description, extra_image_url, original_extra_image_url, extra_image_width, extra_image_height, category,
+          category1, category2, category3, category4, google_product_category, naver_product_category, is_popular,
+          brand, model, manufacturer, shipping, discount_amount, discount_unit, discount_description, age_group,
+          gender, custom_group, last_update_time, created_at, updated_at, product_feed_id, digest, extra_data, save_amount, save_unit
+        FROM
+          prod_buzzad.l_product
+        WHERE
+          partition_timestamp >= TIMESTAMP'{start_time}' AND
+          partition_timestamp < TIMESTAMP'{end_time}' AND
+          {filter_name} = {filter_value}
+    );
+  output_bucket: buzzad-data
+  output_prefix: dna-resources/product/{filter_name}={filter_value}/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzad-product-{filter_name}-{filter_value}
+  file_extension: gz
+
+  database: prod_buzzad
+  table: o_product

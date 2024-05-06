@@ -1,0 +1,28 @@
+---
+pipeline_key: ba_l_profile
+pipeline_type: athena_catalog
+pipeline_dag_configs:
+  start_date: 2020-02-20 00:00:00
+  schedule_interval: "0 * * * *"
+
+athena:
+  database: prod_buzzad
+  table: l_profile
+  location: s3://prod-buzzvil-data-lake/buzzad/landing/profile
+  partition:
+      name: partition_timestamp
+      location: s3://prod-buzzvil-data-lake/buzzad/landing/profile/year={year}/month={month}/day={day}/hour={hour}
+      value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      ifa           VARCHAR(64),
+      cookie_id     VARCHAR(64),
+      log_at        TIMESTAMP
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'ignore.malformed.json'='true'
+    )
+    LOCATION '{location}'

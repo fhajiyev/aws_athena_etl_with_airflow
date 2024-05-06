@@ -1,0 +1,52 @@
+
+---
+pipeline_key: hskr_person_withdrawprohibited
+pipeline_type: mysql_redshift
+incremental_sync: False
+
+mysql:
+  conn_id: honeyscreen_kr_mysql
+  table_name: mobile_user_withdrawprohibited
+  fields:
+   - id
+   - user_id
+   - device_id
+   - memo
+   - created_at
+   - is_pre_banned
+   - staff_user_id
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: hskr_person_withdrawprohibited
+  fields:
+   - id
+   - user_id
+   - device_id
+   - memo
+   - created_at
+   - is_pre_banned
+   - staff_user_id
+  copy_method: replace
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                 INT8             NOT NULL,
+      user_id            INT8             NOT NULL                 ENCODE ZSTD,
+      device_id          VARCHAR(100)     DEFAULT NULL             ENCODE ZSTD,
+      memo               VARCHAR(10240)   DEFAULT NULL             ENCODE LZO,
+      created_at         TIMESTAMP        NOT NULL                 ENCODE ZSTD,
+      is_pre_banned      INT2             NOT NULL                 ENCODE ZSTD,
+      staff_user_id      INT8             DEFAULT NULL             ENCODE ZSTD,
+      PRIMARY KEY(id)
+    )
+    DISTSTYLE ALL
+    SORTKEY(id)
+    ;
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id

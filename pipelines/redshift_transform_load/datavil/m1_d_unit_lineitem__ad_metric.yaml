@@ -1,0 +1,231 @@
+# Note that
+#
+---
+pipeline_key: m1_d_unit_lineitem__ad_metric
+pipeline_type: redshift_transform_load
+pipeline_dag_configs:
+  start_date: 2020-10-28 18:00:00
+  schedule_interval: "0 18 * * *"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-team
+    - trigger: sla_miss
+      args:
+        channel: data-emergency
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  # Should check whether 14:00 ~ 15:00 data was loaded
+  - dag_id: check_data_redshift_ba_statistics_unit_creative__existence
+    timedelta_hours: 1
+
+transform:
+  select_query: |
+   SELECT
+          kst_at,
+          unit_id,
+          unit_name,
+          app_id,
+          app_name,
+          app_is_test,
+          case when unit_id in (100000043,43) THEN false  -- app_name이 MashallTest로 세팅되어있으나 살아있는 유닛
+               when
+                    (
+                      upper(unit_name) like '%TEST%' OR
+                      upper(unit_name) like '%QA%'   OR
+                      upper(unit_name) like '%DEV%'  OR
+                      upper(unit_name) like '%STG%'  OR
+                      unit_id < 42 or
+                      app_is_test = 1
+                     )  then true
+          else false
+          end as app_is_test_yn,
+          category,
+          lineitem_id,
+          lineitem_name,
+          lineitem_type,
+          lineitem_type_name,
+          revenue_type,
+          platform,
+          adnetwork_campaign_id,
+          lineitem_owner_id,
+          lineitem_owner_name,
+          ad_group_id ,
+          ad_group_name,
+          lineitem_organization_id,
+          line_org.name as lineitem_organization_name,
+          unit_organization_id,
+          unit_org.name as unit_organization_name,
+          adnetwork_id,
+          adnetwork_name,
+          unit_currency,
+          lineitem_currency,
+          country,
+          unit_type,
+          unit_type_name,
+          impression_count,
+          click_count,
+          conversion_count,
+          sales_total,
+          unit_sales_total,
+          reward_total
+      FROM  (
+                SELECT
+                       DATE_TRUNC('day',bsuc.data_at + interval '9 hours') AS kst_at,
+                       bsuc.unit_id,
+                       bu.name AS unit_name,
+                       bu.app_id,
+                       app.name as app_name,
+                       app.is_test as app_is_test,
+                       app.category ,
+                       bsuc.lineitem_id,
+                       bl.item_name AS lineitem_name,
+                       bl.item_type as lineitem_type,
+                       mc2.value  as lineitem_type_name,
+                       bl.revenue_type,
+                       bu.platform,
+                       bl.adnetwork_campaign_id,
+                       bl.owner_id AS lineitem_owner_id,
+                       bau.name AS lineitem_owner_name,
+                       bl.ad_group_id ,
+                       bag.name AS ad_group_name,
+                       bl.organization_id AS lineitem_organization_id,
+                       bu.organization_id AS unit_organization_id,
+                       bl.adnetwork_id,
+                       ba.adnetwork_name,
+                       bu.currency AS unit_currency,
+                       bl.currency AS lineitem_currency,
+                       bl.country,
+                       bu.unit_type,
+                       mc.value AS unit_type_name,
+                       sum(bsuc.impression_count) AS impression_count,
+                       sum(bsuc.click_count) AS click_count,
+                       sum(bsuc.conversion_count) AS conversion_count,
+                       sum(bsuc.sales_total) AS sales_total,
+                       sum(bsuc.unit_sales_total) AS unit_sales_total,
+                       sum(bsuc.reward_total) AS reward_total
+                FROM public.ba_statistics_unit_creative bsuc
+                LEFT JOIN public.ba_unit bu ON bsuc.unit_id = bu.id
+                LEFT JOIN public.bs_app app on bu.app_id = app.id
+                LEFT JOIN public.ba_lineitem bl ON bsuc.lineitem_id = bl.id
+                LEFT JOIN public.ba_ad_group bag ON bl.ad_group_id  = bag.id
+                LEFT JOIN public.ba_admin_user bau ON bl.owner_id = bau.id
+                LEFT JOIN datavil.meta_code mc ON bu.unit_type = mc.code AND mc.col_type='unit_type'
+                LEFT JOIN public.ba_adnetworks ba  ON bl.adnetwork_id  = ba.id
+                LEFT JOIN datavil.meta_code mc2 on bl.item_type = mc2.code AND mc2.col_type='item_type'
+                WHERE
+                        1=1
+                  AND bsuc.data_at >= TIMESTAMP'{start_time}' - interval '3 hours'
+                  AND bsuc.data_at < TIMESTAMP'{end_time}' - interval '3 hours'
+                 GROUP BY
+                         DATE_TRUNC('day', bsuc.data_at + interval '9 hours'), bsuc.unit_id, bu.name , bu.app_id, app.name, app.is_test, app.category,
+                         bsuc.lineitem_id, bl.item_name ,bl.item_type, mc2.value , bl.revenue_type, bu.platform, bl.adnetwork_campaign_id,
+                         bl.owner_id , bau.name, bl.ad_group_id, bag.name , bl.organization_id ,bu.organization_id, bl.adnetwork_id, ba.adnetwork_name, bu.currency,
+                         bl.currency , bl.country , bu.unit_type, mc.value
+                 ) a , public.ba_organization unit_org , public.ba_organization line_org
+      where
+        1=1
+        and a.unit_organization_id = unit_org.id
+    and a.lineitem_organization_id = line_org.id
+  delete_query : |
+    DELETE
+    FROM
+      datavil.m1_d_unit_lineitem__ad_metric
+    WHERE
+      kst_at >= TIMESTAMP'{start_time}' - interval '18 hours' + INTERVAL '24 HOURS' AND
+      kst_at < TIMESTAMP'{end_time}' - interval '18 hours' + INTERVAL '24 HOURS'
+
+redshift:
+  table_name: datavil.m1_d_unit_lineitem__ad_metric
+  fields:
+  - kst_at
+  - unit_id
+  - unit_name
+  - app_id
+  - app_name
+  - app_is_test
+  - app_is_test_yn
+  - category
+  - lineitem_id
+  - lineitem_name
+  - lineitem_type
+  - lineitem_type_name
+  - revenue_type
+  - platform
+  - adnetwork_campaign_id
+  - lineitem_owner_id
+  - lineitem_owner_name
+  - ad_group_id
+  - ad_group_name
+  - lineitem_organization_id
+  - lineitem_organization_name
+  - unit_organization_id
+  - unit_organization_name
+  - adnetwork_id
+  - adnetwork_name
+  - unit_currency
+  - lineitem_currency
+  - country
+  - unit_type
+  - unit_type_name
+  - impression_count
+  - click_count
+  - conversion_count
+  - sales_total
+  - unit_sales_total
+  - reward_total
+  unique_key_list:
+  - kst_at
+  - unit_id
+  - lineitem_id
+  increment_key: kst_at
+  increment_key_type: timestamp
+  copy_method: incremental
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      kst_at                       TIMESTAMP           ENCODE AZ64,
+      unit_id                      INT8                ENCODE AZ64,
+      unit_name                    VARCHAR(255)        ENCODE ZSTD,
+      app_id                       INT8                ENCODE AZ64,
+      app_name                     VARCHAR(255)        ENCODE ZSTD,
+      app_is_test                  INT2                ENCODE AZ64,
+      app_is_test_yn               BOOLEAN             ENCODE ZSTD,
+      category                     VARCHAR(255)        ENCODE ZSTD,
+      lineitem_id                  INT8                ENCODE AZ64,
+      lineitem_name                VARCHAR(255)        ENCODE ZSTD,
+      lineitem_type                VARCHAR(64)         ENCODE ZSTD,
+      lineitem_type_name           VARCHAR(64)         ENCODE ZSTD,
+      revenue_type                 VARCHAR(64)         ENCODE ZSTD,
+      platform                     VARCHAR(1)          ENCODE ZSTD,
+      adnetwork_campaign_id        VARCHAR(255)        ENCODE ZSTD,
+      lineitem_owner_id            INT8                ENCODE AZ64,
+      lineitem_owner_name          VARCHAR(255)        ENCODE ZSTD,
+      ad_group_id                  INT8                ENCODE AZ64,
+      ad_group_name                VARCHAR(512)        ENCODE ZSTD,
+      lineitem_organization_id     INT8                ENCODE AZ64,
+      lineitem_organization_name   VARCHAR(512)        ENCODE ZSTD,
+      unit_organization_id         INT8                ENCODE AZ64,
+      unit_organization_name       VARCHAR(512)        ENCODE ZSTD,
+      adnetwork_id                 INT8                ENCODE AZ64,
+      adnetwork_name               VARCHAR(512)        ENCODE ZSTD,
+      unit_currency                VARCHAR(3)          ENCODE ZSTD,
+      lineitem_currency            VARCHAR(3)          ENCODE ZSTD,
+      country                      VARCHAR(2)          ENCODE ZSTD,
+      unit_type                    VARCHAR(64)         ENCODE ZSTD,
+      unit_type_name               VARCHAR(64)         ENCODE ZSTD,
+      impression_count             INT8                ENCODE AZ64,
+      click_count                  INT8                ENCODE AZ64,
+      conversion_count             INT8                ENCODE AZ64,
+      sales_total                  NUMERIC(38,9)       ENCODE AZ64,
+      unit_sales_total             NUMERIC(38,9)       ENCODE AZ64,
+      reward_total                 NUMERIC(38,9)
+    )
+    DISTKEY(lineitem_id)
+    SORTKEY(kst_at)
+    ;

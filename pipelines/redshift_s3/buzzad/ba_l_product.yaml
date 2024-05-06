@@ -1,0 +1,72 @@
+---
+pipeline_key: ba_l_product
+pipeline_type: redshift_s3_sync
+pipeline_dag_configs:
+  start_date: 2019-05-16 07:00:00
+  schedule_interval: "0 * * * *"
+redshift:
+  query_syntax: |
+    SELECT
+      *
+    FROM
+      ba_product
+    WHERE
+      updated_at >= \'{start_time}\' AND updated_at < \'{end_time}\'
+s3:
+  bucket: prod-buzzvil-data-lake
+  prefix: buzzad/landing/product
+athena:
+  database: prod_buzzad
+  table: l_product
+  location: s3://prod-buzzvil-data-lake/buzzad/landing/product
+  partition:
+    name: partition_timestamp
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id                            BIGINT,
+      code                          VARCHAR(255),
+      name                          VARCHAR(1024),
+      price                         DECIMAL(18,9),
+      currency                      VARCHAR(3),
+      landing_url                   VARCHAR(2048),
+      image_url                     VARCHAR(512),
+      original_image_url            VARCHAR(2048),
+      is_active                     SMALLINT,
+      normal_price                  DECIMAL(18,9),
+      description                   VARCHAR(4096),
+      extra_image_url               VARCHAR(1024),
+      original_extra_image_url      VARCHAR(2048),
+      extra_image_width             INT,
+      extra_image_height            INT,
+      category                      VARCHAR(1024),
+      category1                     VARCHAR(255),
+      category2                     VARCHAR(255),
+      category3                     VARCHAR(255),
+      category4                     VARCHAR(255),
+      google_product_category       VARCHAR(1024),
+      naver_product_category        VARCHAR(1024),
+      is_popular                    SMALLINT,
+      brand                         VARCHAR(255),
+      model                         VARCHAR(1024),
+      manufacturer                  VARCHAR(1024),
+      shipping                      DECIMAL(18,9),
+      discount_amount               DECIMAL(18,9),
+      discount_unit                 VARCHAR(3),
+      discount_description          VARCHAR(2048),
+      age_group                     VARCHAR(64),
+      gender                        VARCHAR(64),
+      custom_group                  VARCHAR(255),
+      last_update_time              TIMESTAMP,
+      created_at                    TIMESTAMP,
+      updated_at                    TIMESTAMP,
+      product_feed_id               BIGINT,
+      digest                        VARCHAR(255),
+      extra_data                    VARCHAR(2048),
+      save_amount                   DECIMAL(18,9),
+      save_unit                     VARCHAR(3)
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    tblproperties("parquet.compress"="SNAPPY");

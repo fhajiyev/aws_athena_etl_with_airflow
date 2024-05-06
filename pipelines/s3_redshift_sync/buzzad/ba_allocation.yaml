@@ -1,0 +1,64 @@
+### Notes:
+# direct_normal_count = non-backfill direct ads count
+# filter_passed_count = non-backfill, weight-filter-passed lineitem
+# filled_request_count = filled direct ads count
+# adnetwork_fill_count = adnetwork ads count
+# direct_backfill_count = backfill direct ads count
+---
+pipeline_key: ba_allocation
+pipeline_type: s3_redshift_sync
+pipeline_dag_configs:
+  start_date: 2019-06-19 00:00:00
+  schedule_interval: "@hourly"
+delay_seconds: 600
+
+s3:
+  bucket: buzzvil-log-oregon
+  prefix: prod/buzzad/buzzad-django-publisher_request
+redshift:
+  table_name: ba_allocation
+  fields:
+  - request_id
+  - viewer_id
+  - unit_id
+  - country
+  - client_ip
+  - direct_normal_count
+  - filter_passed_count
+  - filled_request_count
+  - adnetwork_fill_count
+  - direct_backfill_count
+  - created_at
+  - sdk_version
+  unique_key_list:
+  - request_id
+  deduplicate_key_list:
+  - request_id
+  increment_key: created_at
+  increment_key_type: timestamp
+  copy_method: incremental
+  copy_option: jsonpath
+  jsonpath_location: 's3://buzzvil-log-oregon/prod/buzzad/buzzad-django-publisher_request/jsonpaths/ba_allocation.jsonpaths'
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+        request_id              VARCHAR(45)   NOT NULL       ENCODE ZSTD,
+        viewer_id               VARCHAR(64)   NOT NULL       ENCODE ZSTD,
+        unit_id                 INT8          NOT NULL       ENCODE AZ64,
+        country                 VARCHAR(2)    DEFAULT NULL   ENCODE ZSTD,
+        client_ip               VARCHAR(64)   NOT NULL       ENCODE ZSTD,
+        direct_normal_count     INT4          NOT NULL       ENCODE AZ64,
+        filter_passed_count     INT4          NOT NULL       ENCODE AZ64,
+        filled_request_count    INT4          NOT NULL       ENCODE AZ64,
+        adnetwork_fill_count    INT4          NOT NULL       ENCODE AZ64,
+        direct_backfill_count   INT4          NOT NULL       ENCODE AZ64,
+        created_at              TIMESTAMP     NOT NULL       ENCODE AZ64,
+        sdk_version_code        VARCHAR(64)   DEFAULT NULL   ENCODE ZSTD,
+        sdk_version_name        VARCHAR(64)   DEFAULT NULL   ENCODE ZSTD,
+        sdk_version_major       INT2          DEFAULT NULL   ENCODE AZ64,
+        sdk_version_minor       INT2          DEFAULT NULL   ENCODE AZ64,
+        sdk_version_patch       INT2          DEFAULT NULL   ENCODE AZ64
+    )
+    DISTKEY(viewer_id)
+    SORTKEY(created_at, unit_id)
+    ;

@@ -1,0 +1,37 @@
+---
+pipeline_key: ba_l_stream_conversion
+pipeline_type: athena_catalog
+pipeline_dag_configs:
+  start_date: 2020-10-30 00:00:00
+  schedule_interval: "0 * * * *"
+
+# There can be a maximum of 600s delay before the last batch of data for a given hour slot comes in.
+# https://github.com/Buzzvil/adserver/blob/22e9288699a1197644a37790ecae014539ac3e0e/deploy/fluentd/etc/fluent.conf#L53
+# TODO: Decrease execution_delay after pipeline migration to kinesis or kafka
+execution_delay: 600
+
+athena:
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzad"
+  table: l_stream_conversion
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/buzzad/landing/conversion_stream"
+  partition:
+    name: partition_timestamp
+    location: "s3://{{{{ var.value.get('server_env', 'prod') }}}}-buzzvil-data-lake/buzzad/landing/conversion_stream/{year}/{month}/{day}/{hour}"
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      viewer_id                VARCHAR(64),
+      unit_id                  BIGINT,
+      lineitem_id              BIGINT,
+      creative_id              BIGINT,
+      sales                    DECIMAL(27,9),
+      unit_sales               DECIMAL(27,9),
+      time                     TIMESTAMP
+    )
+    PARTITIONED BY (partition_timestamp TIMESTAMP)
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'ignore.malformed.json'='true'
+    )
+    LOCATION '{location}';

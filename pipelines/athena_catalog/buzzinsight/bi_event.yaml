@@ -1,0 +1,42 @@
+---
+pipeline_key: bi_l_event
+pipeline_type: athena_catalog
+pipeline_dag_configs:
+  start_date: 2020-01-01 00:00:00
+  schedule_interval: "0 * * * *"
+athena:
+  database: "{{ var.value.get('server_env', 'prod') }}_bi"
+  table: l_event
+  location: s3://prod-buzzvil-firehose/buzzinsight/event/
+  partition:
+    name: partition_timestamp
+    location: s3://prod-buzzvil-firehose/buzzinsight/event/{year}/{month}/{day}/{hour}
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      app_id             VARCHAR(64),
+      unit_id            VARCHAR(64),
+      type               VARCHAR(64),
+      name               VARCHAR(255),
+      created_at         TIMESTAMP,
+      version            INT,
+      user_id            VARCHAR(255),
+      sub_user_id        VARCHAR(1024),
+      guid               VARCHAR(64),
+      ifa                VARCHAR(64),
+      sex                VARCHAR(64),
+      year_of_birth      INT,
+      carrier            VARCHAR(64),
+      device_name        VARCHAR(64),
+      device_os          VARCHAR(64),
+      device_resolution  VARCHAR(64),
+      ip                 VARCHAR(64),
+      ip_country         VARCHAR(64),
+      attributes         VARCHAR(65535)
+    )
+    PARTITIONED BY (partition_timestamp TIMESTAMP)
+    ROW FORMAT SERDE 'org.apache.hive.hcatalog.data.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'timestamp.formats'="yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+    ) LOCATION '{location}';

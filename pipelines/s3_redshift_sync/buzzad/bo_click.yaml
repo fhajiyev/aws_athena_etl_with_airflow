@@ -1,0 +1,46 @@
+---
+pipeline_key: bo_click
+pipeline_type: s3_redshift_sync
+pipeline_dag_configs:
+  start_date: 2019-07-01 00:00:00
+  schedule_interval: "@hourly"
+delay_seconds: 600
+
+s3:
+  bucket: buzzvil-log-oregon
+  prefix: prod/buzzad/buzzad-general-bo_click
+redshift:
+  table_name: bo_click
+  fields:
+  - viewer_id
+  - ifa
+  - unit_id
+  - session_id
+  - lineitem_id
+  - position
+  - created_at
+  unique_key_list:
+  - session_id
+  - created_at
+  deduplicate_key_list:
+  - session_id
+  - created_at
+  increment_key: created_at
+  increment_key_type: timestamp
+  copy_method: upsert
+  copy_option: jsonpath
+  jsonpath_location: 's3://buzzvil-log-oregon/prod/buzzad/buzzad-general-bo_click/jsonpaths/bo_click.jsonpaths'
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+        viewer_id     VARCHAR(45)   NOT NULL   ENCODE ZSTD,
+        ifa           VARCHAR(45)   NULL       ENCODE ZSTD,
+        unit_id       INT8          NOT NULL   ENCODE ZSTD,
+        session_id    VARCHAR(45)   NOT NULL   ENCODE ZSTD,
+        lineitem_id   INT8          NOT NULL   ENCODE ZSTD,
+        position      INT4          NOT NULL   ENCODE ZSTD,
+        created_at    TIMESTAMP     NOT NULL   ENCODE ZSTD
+    )
+    DISTKEY (viewer_id)
+    SORTKEY (created_at)
+    ;

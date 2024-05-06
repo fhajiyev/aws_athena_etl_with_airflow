@@ -1,0 +1,56 @@
+---
+pipeline_key: sj_user_device
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: slidejoy_mysql
+  table_name: tbl_userDevice
+  fields:
+  - deviceId
+  - androidId
+  - advertisingId
+  - gcmToken
+  - agent
+  - userId
+  - gameId
+  - creationDate
+  - updateDate
+  increment_key: updateDate
+  increment_key_type: timestamp
+  unique_key_list:
+  - deviceId
+
+redshift:
+  table_name: sj_user_device
+  fields:
+  - deviceId
+  - androidId
+  - advertisingId
+  - gcmToken
+  - agent
+  - userId
+  - gameId
+  - creationDate
+  - updateDate
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      deviceId        VARCHAR (150)    NOT NULL       ENCODE ZSTD,
+      androidId       VARCHAR (20)     DEFAULT NULL   ENCODE ZSTD,
+      advertisingId   VARCHAR (40)     DEFAULT NULL   ENCODE ZSTD,
+      gcmToken        VARCHAR (1000)   DEFAULT NULL   ENCODE LZO,
+      agent           VARCHAR (300)    DEFAULT NULL   ENCODE LZO,
+      userId          VARCHAR (64)     DEFAULT NULL   ENCODE ZSTD,
+      gameId          SMALLINT         DEFAULT NULL   ENCODE ZSTD,
+      creationDate    TIMESTAMP        NOT NULL       ENCODE ZSTD,
+      updateDate      TIMESTAMP        DEFAULT NULL   ENCODE ZSTD
+    )
+    DISTKEY(userId)
+    SORTKEY(creationDate, updateDate)
+    ;
+  increment_key: updateDate
+  increment_key_type: timestamp
+  unique_key_list:
+  - deviceId

@@ -1,0 +1,73 @@
+---
+pipeline_key: ba_billing_contract
+pipeline_type: mysql_redshift
+incremental_sync: False
+
+mysql:
+  conn_id: buzzad_mysql
+  table_name: billing_contracts
+  fields:
+  - id
+  - name
+  - agency_fee
+  - display_revenue_share_rate
+  - display_adnetwork_revenue_share_rate
+  - action_revenue_share_rate
+  - fan_revenue_share_rate
+  - admob_revenue_share_rate
+  - display_cost_reimbursement_rate
+  - action_cost_reimbursement_rate
+  - exchange_rate
+  - cost_reimbursement_rate
+  - buzzvil_sales_discount_rate
+  - created_at
+  - updated_at
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: ba_billing_contract
+  fields:
+  - id
+  - name
+  - agency_fee
+  - display_revenue_share_rate
+  - display_adnetwork_revenue_share_rate
+  - action_revenue_share_rate
+  - fan_revenue_share_rate
+  - admob_revenue_share_rate
+  - display_cost_reimbursement_rate
+  - action_cost_reimbursement_rate
+  - exchange_rate
+  - cost_reimbursement_rate
+  - buzzvil_sales_discount_rate
+  - created_at
+  - updated_at
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                                     INT8            NOT NULL       ENCODE ZSTD,
+      name                                   VARCHAR(255)    NOT NULL       ENCODE LZO,
+      agency_fee                             DECIMAL(10,3)   DEFAULT NULL   ENCODE ZSTD,
+      display_revenue_share_rate             DECIMAL(10,3)   DEFAULT NULL   ENCODE ZSTD,
+      display_adnetwork_revenue_share_rate   DECIMAL(10,3)   DEFAULT NULL   ENCODE ZSTD,
+      action_revenue_share_rate              DECIMAL(10,3)   DEFAULT NULL   ENCODE ZSTD,
+      fan_revenue_share_rate                 DECIMAL(10,3)   DEFAULT NULL   ENCODE ZSTD,
+      admob_revenue_share_rate               DECIMAL(10,3)   DEFAULT NULL   ENCODE ZSTD,
+      display_cost_reimbursement_rate        DECIMAL(10,3)   DEFAULT NULL   ENCODE ZSTD,
+      action_cost_reimbursement_rate         DECIMAL(10,3)   DEFAULT NULL   ENCODE ZSTD,
+      exchange_rate                          DECIMAL(10,3)   DEFAULT NULL   ENCODE ZSTD,
+      cost_reimbursement_rate                DECIMAL(10,3)   DEFAULT NULL   ENCODE ZSTD,
+      buzzvil_sales_discount_rate            DECIMAL(10,3)   DEFAULT NULL   ENCODE ZSTD,
+      created_at                             TIMESTAMP       NOT NULL       ENCODE ZSTD,
+      updated_at                             TIMESTAMP       NOT NULL       ENCODE ZSTD,
+      PRIMARY KEY(id)
+    )
+    DISTSTYLE ALL
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id

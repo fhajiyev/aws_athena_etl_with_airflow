@@ -1,0 +1,25 @@
+---
+pipeline_key: buzzml_l_user_cls
+pipeline_type: athena_catalog
+pipeline_dag_configs:
+  start_date: 2020-10-04 00:00:00
+  schedule_interval: "0 * * * *"
+
+athena:
+  database: prod_buzzml
+  table: l_user_cls
+  location: s3://prod-buzzvil-data-lake/buzzml/landing/cls
+  partition:
+    name: partition_timestamp
+    location: s3://prod-buzzvil-data-lake/buzzml/landing/cls/year={year}/month={month}/day={day}/hour={hour}
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      vid                VARCHAR(64),
+      cls                STRING
+    )
+    PARTITIONED BY (partition_timestamp TIMESTAMP)
+    ROW FORMAT DELIMITED
+      FIELDS TERMINATED BY ','
+      LINES TERMINATED BY '\n'
+    LOCATION '{location}';

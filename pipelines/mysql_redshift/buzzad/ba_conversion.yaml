@@ -1,0 +1,105 @@
+---
+pipeline_key: ba_conversion
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: buzzad_mysql
+  table_name: raw_data_conversions
+  fields:
+  - id
+  - seq_id
+  - adnetwork_id
+  - viewer_id
+  - order_id
+  - lineitem_id
+  - unit_id
+  - campaign_id
+  - campaign_name
+  - sub_type
+  - payout
+  - currency
+  - unit_payout
+  - unit_currency
+  - device_os
+  - country
+  - created_at
+  - updated_at
+  - ip
+  - raw_data_click_id
+  - is_succeeded
+  - reward
+  - sales
+  - unit_sales
+  - is_forced_conversion
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: ba_conversion
+  fields:
+  - id
+  - seq_id
+  - adnetwork_id
+  - viewer_id
+  - order_id
+  - lineitem_id
+  - unit_id
+  - campaign_id
+  - campaign_name
+  - sub_type
+  - payout
+  - currency
+  - unit_payout
+  - unit_currency
+  - device_os
+  - country
+  - created_at
+  - updated_at
+  - ip
+  - raw_data_click_id
+  - is_succeeded
+  - reward
+  - sales
+  - unit_sales
+  - is_forced_conversion
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                     INT4             NOT NULL       ENCODE ZSTD,
+      seq_id                 VARCHAR(300)     DEFAULT NULL   ENCODE ZSTD,
+      adnetwork_id           INT8             NOT NULL       ENCODE ZSTD,
+      viewer_id              VARCHAR(64)      NOT NULL       ENCODE ZSTD,
+      order_id               INT8             DEFAULT NULL   ENCODE ZSTD,
+      lineitem_id            INT8             DEFAULT NULL   ENCODE ZSTD,
+      unit_id                INT8             DEFAULT NULL   ENCODE ZSTD,
+      campaign_id            VARCHAR(300)     DEFAULT NULL   ENCODE ZSTD,
+      campaign_name          VARCHAR(300)     DEFAULT NULL   ENCODE ZSTD,
+      sub_type               VARCHAR(300)     DEFAULT NULL   ENCODE ZSTD,
+      payout                 DECIMAL(18, 9)   DEFAULT 0      ENCODE ZSTD,
+      currency               VARCHAR(10)      DEFAULT NULL   ENCODE ZSTD,
+      unit_payout            DECIMAL(18, 9)   DEFAULT 0      ENCODE ZSTD,
+      unit_currency          VARCHAR(10)      DEFAULT NULL   ENCODE ZSTD,
+      device_os              VARCHAR(30)      DEFAULT NULL   ENCODE ZSTD,
+      country                VARCHAR(2)       DEFAULT NULL   ENCODE ZSTD,
+      created_at             TIMESTAMP        NOT NULL       ENCODE ZSTD,
+      updated_at             TIMESTAMP        NOT NULL       ENCODE ZSTD,
+      ip                     INT8             NULL           ENCODE ZSTD,
+      raw_data_click_id      INT8             NULL           ENCODE ZSTD,
+      is_succeeded           VARCHAR(1)       DEFAULT NULL   ENCODE ZSTD,
+      reward                 INT8             DEFAULT 0      ENCODE ZSTD,
+      sales                  DECIMAL(18, 9)   DEFAULT 0      ENCODE ZSTD,
+      unit_sales             DECIMAL(18, 9)   DEFAULT 0      ENCODE ZSTD,
+      is_forced_conversion   INT2             NULL           ENCODE ZSTD,
+      PRIMARY KEY(id)
+    )
+    DISTKEY(id)
+    SORTKEY(created_at, lineitem_id)
+    ;
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id

@@ -1,0 +1,42 @@
+---
+pipeline_key: ba_allocation_analysis
+pipeline_type: redshift_spectrum_add_partition
+pipeline_dag_configs:
+  start_date: 2020-06-01 00:00:00
+  end_date: 2030-01-01 00:00:00
+  schedule_interval: "@hourly"
+
+athena:
+  table_name: ba_allocation_analysis
+  fields:
+  - comment
+  - analysis_category
+  - allocation_id
+  - unit_id
+  - viewer_id
+  - lineitem_ids
+  - time
+  partition:
+    location: "s3://prod-buzzvil-data-lake/buzzad/landing/allocation_analysis/year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}"
+    name: partition_timestamp
+
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE spectrum.ba_allocation_analysis (
+      comment             VARCHAR(255),
+      analysis_category   VARCHAR(255),
+      allocation_id       VARCHAR(255),
+      unit_id             INT8,
+      viewer_id           VARCHAR(255),
+      lineitem_ids        VARCHAR(16384),
+      time                TIMESTAMP
+    )
+    PARTITIONED BY (
+        partition_timestamp TIMESTAMP
+    )
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'ignore.malformed.json'='true'
+    )
+    LOCATION
+      's3://prod-buzzvil-data-lake/buzzad/landing/allocation_analysis/';

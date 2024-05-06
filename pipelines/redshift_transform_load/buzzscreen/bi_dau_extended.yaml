@@ -1,0 +1,229 @@
+# Note that
+# - interval '6 hours' is actually "interval - 21 (execution time) + 24 (day offset) - 9( utc conversion)"
+# + interval '3 hours' is actually "interval - 21 (execution time) + 24 (day offset)"
+---
+pipeline_key: bi_dau_extended
+pipeline_type: redshift_transform_load
+pipeline_dag_configs:
+  start_date: 2019-07-22 21:00:00
+  schedule_interval: "0 21 * * *"
+transform:
+  select_query: |
+    WITH
+    imp_click as (
+      SELECT
+        ifa,
+        count(*) as ad_imp_count,
+        0 as ad_click_count,
+        0 as ad_reward,
+        0 as content_imp_count,
+        0 as content_click_count
+      FROM
+        ba_impression
+      WHERE
+        created_at >= TIMESTAMP'{start_time}' - interval '6 hours' AND
+        created_at < TIMESTAMP'{end_time}' - interval '6 hours'
+      GROUP BY
+        1
+
+      UNION ALL
+
+      SELECT
+        ifa,
+        0 as ad_imp_count,
+        count(*) as ad_click_count,
+        0 as ad_reward,
+        0 as content_imp_count,
+        0 as content_click_count
+      FROM
+        ba_click
+      WHERE
+        created_at >= TIMESTAMP'{start_time}' - interval '6 hours' AND
+        created_at < TIMESTAMP'{end_time}' - interval '6 hours'
+      GROUP BY
+        1
+
+      UNION ALL
+
+      SELECT
+        SUBSTRING(viewer_id, 5,36) as ifa,
+        0 as ad_imp_count,
+        0 as ad_click_count,
+        SUM(reward) as ad_reward,
+        0 as content_imp_count,
+        0 as content_click_count
+      FROM
+        ba_conversion
+      WHERE
+        created_at >= TIMESTAMP'{start_time}' - interval '6 hours'  AND
+        created_at < TIMESTAMP'{end_time}' - interval '6 hours'
+      GROUP BY
+        1
+
+      UNION ALL
+
+      SELECT
+        ifa,
+        0 as ad_imp_count,
+        0 as ad_click_count,
+        0 as ad_reward,
+        count(*) as content_imp_count,
+        0 as content_click_count
+      FROM
+        bs_impression
+      WHERE
+        created_at >= TIMESTAMP'{start_time}' - interval '6 hours'  AND
+        created_at < TIMESTAMP'{end_time}' - interval '6 hours'
+      GROUP BY
+        1
+
+      UNION ALL
+
+      SELECT
+        ifa,
+        0 as ad_imp_count,
+        0 as ad_click_count,
+        0 as ad_reward,
+        0 as content_imp_count,
+        count(*) as content_click_count
+      FROM
+        bs_click
+      WHERE
+        created_at >= TIMESTAMP'{start_time}' - interval '6 hours' AND
+        created_at < TIMESTAMP'{end_time}' - interval '6 hours'
+      GROUP BY
+        1
+    ),
+    agg_imp_click as (
+      SELECT
+        ifa,
+        SUM(ad_imp_count) as ad_imp_count,
+        SUM(ad_click_count) as ad_click_count,
+        SUM(ad_reward) as ad_reward,
+        SUM(content_imp_count) as content_imp_count,
+        SUM(content_click_count) as content_click_count
+      FROM
+        imp_click
+      GROUP BY
+        1
+    ),
+    points as (
+      SELECT
+        device_id,
+        SUM(amount) as bs_reward,
+        SUM(base_reward) as bs_base_reward
+      FROM
+        bs_point
+      WHERE
+        created_at >= TIMESTAMP'{start_time}' - interval '6 hours'  AND
+        created_at < TIMESTAMP'{end_time}' - interval '6 hours'
+      GROUP BY
+        1
+    ),
+    event as (
+      SELECT DISTINCT
+        user_id,
+        sub_user_id,
+        FIRST_VALUE(ifa) OVER (PARTITION BY user_id) as ifa,
+        FIRST_VALUE(device_os) OVER (PARTITION BY user_id) as device_os,
+        FIRST_VALUE(device_name) OVER (PARTITION BY user_id) as device_name
+      FROM
+        bi_event
+      WHERE
+        user_id <> 0 AND
+        created_at >= TIMESTAMP'{start_time}' - interval '6 hours'  AND
+        created_at < TIMESTAMP'{end_time}' - interval '6 hours'
+    ),
+    device as (
+      SELECT DISTINCT
+        d.created_at as created_at,
+        d.device_id as device_id,
+        d.unit_id as unit_id,
+        d.app_id as app_id,
+        d.sdk_version,
+        e.sub_user_id as sub_user_id,
+        e.ifa as ifa,
+        e.device_os as device_os,
+        e.device_name as device_name
+      FROM
+        bs_dau_extended d
+        LEFT JOIN event e ON
+          d.device_id = e.user_id
+      WHERE
+        d.created_at >= TIMESTAMP'{start_time}' + interval '3 hours' AND
+        d.created_at < TIMESTAMP'{end_time}' + interval '3 hours'
+    )
+    SELECT
+      d.device_id,
+      d.sub_user_id,
+      d.unit_id,
+      d.app_id,
+      d.ifa,
+      d.sdk_version,
+      d.device_os,
+      d.device_name,
+      NVL(a.ad_imp_count, 0) as ad_imp_count,
+      NVL(a.ad_click_count, 0) as ad_click_count,
+      NVL(a.content_imp_count, 0) as content_imp_count,
+      NVL(a.content_click_count, 0) as content_click_count,
+      NVL(p.bs_reward, 0) as bs_reward,
+        NVL(a.ad_reward, 0) as ba_reward,
+      NVL(p.bs_base_reward, 0) as bs_base_reward,
+      d.created_at
+    FROM
+      device d
+      LEFT JOIN agg_imp_click a ON
+        d.ifa = a.ifa
+      LEFT JOIN points p ON
+        d.device_id = p.device_id
+  delete_query: ''
+
+
+redshift:
+  table_name: bi_dau_extended
+  fields:
+  - device_id
+  - sub_user_id
+  - unit_id
+  - app_id
+  - ifa
+  - sdk_version
+  - device_os
+  - device_name
+  - ad_imp_count
+  - ad_click_count
+  - content_imp_count
+  - content_click_count
+  - bs_reward
+  - ba_reward
+  - bs_base_reward
+  - created_at
+  unique_key_list:
+  - device_id
+  - created_at
+  increment_key: created_at
+  increment_key_type: timestamp
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      device_id             VARCHAR(45)      NOT NULL       ENCODE ZSTD,
+      sub_user_id           VARCHAR(255)     NOT NULL       ENCODE ZSTD,
+      unit_id               INT8             DEFAULT NULL   ENCODE ZSTD,
+      app_id                INT8             DEFAULT NULL   ENCODE ZSTD,
+      ifa                   VARCHAR(45)      DEFAULT NULL   ENCODE ZSTD,
+      sdk_version           INT8             DEFAULT NULL   ENCODE ZSTD,
+      device_os             VARCHAR(32)      DEFAULT NULL   ENCODE ZSTD,
+      device_name           VARCHAR(32)      DEFAULT NULL   ENCODE ZSTD,
+      ad_imp_count          INT4             DEFAULT 0      ENCODE ZSTD,
+      ad_click_count        INT4             DEFAULT 0      ENCODE ZSTD,
+      content_imp_count     INT4             DEFAULT 0      ENCODE ZSTD,
+      content_click_count   INT4             DEFAULT 0      ENCODE ZSTD,
+      bs_reward             DECIMAL(27, 9)   DEFAULT 0      ENCODE ZSTD,
+      ba_reward             DECIMAL(27, 9)   DEFAULT 0      ENCODE ZSTD,
+      bs_base_reward        DECIMAL(27, 9)   DEFAULT 0      ENCODE ZSTD,
+      created_at            TIMESTAMP        NOT NULL       ENCODE ZSTD
+    )
+    DISTKEY(device_id)
+    SORTKEY(created_at, device_id)
+    ;

@@ -1,0 +1,100 @@
+# STRING type 데이터만 제외하고 다 넣는다
+---
+pipeline_key: bs_allocation_dau
+pipeline_type: redshift_query
+pipeline_dag_configs:
+  start_date: 2020-11-24 17:00:00
+  schedule_interval: "0 17 * * *"
+  depends_on_past: false
+  retries: 5
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency
+    - trigger: sla_miss
+      args:
+        channel: data-emergency
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: athena_process_bs_g_allocation_dau
+    timedelta_hours: 0
+
+redshift:
+  query: |
+    BEGIN;
+    CREATE TABLE IF NOT EXISTS bs_allocation_dau
+    (
+      kst_at                             TIMESTAMP       ENCODE AZ64,
+      app_id                             BIGINT          ENCODE AZ64,
+      unit_id                            BIGINT          ENCODE AZ64,
+      device_id                          BIGINT          ENCODE AZ64,
+      publisher_user_id                  VARCHAR(1024)   ENCODE ZSTD,
+      ifa                                VARCHAR(64)     ENCODE ZSTD,
+      gender                             VARCHAR(1)      ENCODE ZSTD,
+      membership_days                    INT             ENCODE AZ64,
+      mcc                                VARCHAR(3)      ENCODE ZSTD,
+      mnc                                VARCHAR(3)      ENCODE ZSTD,
+      os_version                         VARCHAR(64)     ENCODE ZSTD,
+      device_name                        VARCHAR(512)    ENCODE ZSTD,
+      sdk_version                        INT             ENCODE AZ64,
+      user_agent                         VARCHAR(1024)   ENCODE ZSTD,
+      network_type                       VARCHAR(1024)   ENCODE ZSTD,
+      timezone                           VARCHAR(1024)   ENCODE ZSTD,
+      client_ip                          VARCHAR(1024)   ENCODE ZSTD,
+      carrier                            VARCHAR(1024)   ENCODE ZSTD,
+      default_browser                    VARCHAR(1024)   ENCODE ZSTD,
+      installed_browsers                 VARCHAR(8192)   ENCODE ZSTD,
+      package_name                       VARCHAR(1024)   ENCODE ZSTD,
+      region                             VARCHAR(1024)   ENCODE ZSTD,
+      year_of_birth                      INT             ENCODE AZ64,
+      is_allocation_test                 BOOLEAN         ENCODE ZSTD,
+      is_ifa_limit_ad_tracking_enabled   BOOLEAN         ENCODE ZSTD,
+      is_test                            BOOLEAN         ENCODE ZSTD,
+      support_remove_after_impression    BOOLEAN         ENCODE ZSTD,
+      android_id                         VARCHAR(64)     ENCODE ZSTD,
+      birthday                           VARCHAR(64)     ENCODE ZSTD,
+      relationship                       VARCHAR(1)      ENCODE ZSTD,
+      platform                           VARCHAR(1)      ENCODE ZSTD,
+      language                           VARCHAR(64)     ENCODE ZSTD,
+      latitude                           DECIMAL(27,9)   ENCODE AZ64,
+      longitude                          DECIMAL(27,9)   ENCODE AZ64,
+      country                            VARCHAR(1024)   ENCODE ZSTD,
+      cps_category                       VARCHAR(1024)   ENCODE ZSTD,
+      target_fill                        INT             ENCODE AZ64,
+      is_mock_response                   BOOLEAN         ENCODE ZSTD
+    )
+    DISTKEY (ifa)
+    SORTKEY (kst_at)
+    ;
+
+    -- Should delete any data that was produced by previous runs of the same execution_date
+    -- Notes
+    -- execution_date = '2020-11-24 17:00:00 UTC'
+    -- execution_starts_at = '2020-11-25 17:00:00 UTC'
+    -- execution_starts_at = '2020-11-26 02:00:00 UTC'
+    -- data_at = '2020-11-24 17:00:00' - INTERVAL '17 HOURS' + INTERVAL '24 HOURS'
+    --         = '2020-11-25 00:00:00 KST'
+
+    DELETE
+    FROM
+      bs_allocation_dau
+    WHERE
+      kst_at = TIMESTAMP'{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}' - INTERVAL '17 HOURS' + INTERVAL '24 HOURS'
+    ;
+
+    COPY
+      bs_allocation_dau
+    FROM
+      's3://{{ var.value.get('server_env') }}-buzzvil-data-lake/buzzscreen/gold/allocation_dau/year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}/'
+    ACCESS_KEY_ID '{{ var.value.get('redshift_access_key') }}'
+    SECRET_ACCESS_KEY '{{ var.value.get('redshift_secret_key') }}'
+    PARQUET
+    STATUPDATE OFF
+    COMPUPDATE OFF;
+
+    END;

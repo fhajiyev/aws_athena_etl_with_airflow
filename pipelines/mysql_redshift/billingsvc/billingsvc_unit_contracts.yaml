@@ -1,0 +1,74 @@
+---
+pipeline_key: billingsvc_unit_contracts
+pipeline_type: mysql_redshift
+incremental_sync: False
+
+mysql:
+  conn_id: billingsvc_mysql
+  table_name: unit_contracts
+  increment_key: id
+  increment_key_type: dump
+  fields:
+  - id
+  - uuid
+  - unit_id
+  - start_date
+  - end_date
+  - currency
+  - point_rate
+  - timezone
+  - buzzvil_payout_strategy
+  - owner_payout_strategy
+  - finalized
+  - updated_at
+  - created_at
+  - contract_id
+  - exchange_rate
+  unique_key_list:
+  - id
+redshift:
+  table_name: billingsvc_unit_contracts
+  fields:
+  - id
+  - uuid
+  - unit_id
+  - start_date
+  - end_date
+  - currency
+  - point_rate
+  - timezone
+  - buzzvil_payout_strategy
+  - owner_payout_strategy
+  - finalized
+  - updated_at
+  - created_at
+  - contract_id
+  - exchange_rate
+  copy_method: replace
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                         BIGINT          ENCODE AZ64,
+      uuid                       VARCHAR(64)     ENCODE ZSTD,
+      unit_id                    BIGINT          ENCODE AZ64,
+      start_date                 TIMESTAMP       ENCODE AZ64,
+      end_date                   TIMESTAMP       ENCODE AZ64,
+      currency                   VARCHAR(10)     ENCODE ZSTD,
+      point_rate                 DECIMAL(27,9)   ENCODE AZ64,
+      timezone                   VARCHAR(20)     ENCODE ZSTD,
+      buzzvil_payout_strategy    VARCHAR(20)     ENCODE ZSTD,
+      owner_payout_strategy      VARCHAR(20)     ENCODE ZSTD,
+      finalized                  SMALLINT        ENCODE AZ64,
+      updated_at                 TIMESTAMP       ENCODE AZ64,
+      created_at                 TIMESTAMP       ENCODE AZ64,
+      contract_id                VARCHAR(255)    ENCODE ZSTD,
+      exchange_rate              DECIMAL(27,9)   ENCODE AZ64,
+      PRIMARY KEY(id)
+    )
+    DISTSTYLE ALL
+    SORTKEY(id)
+    ;
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id

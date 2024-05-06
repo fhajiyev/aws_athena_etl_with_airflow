@@ -1,0 +1,88 @@
+---
+pipeline_key: ba_ad_group_extended
+pipeline_type: redshift_query
+pipeline_dag_configs:
+  start_date: 2020-12-09 00:00:00
+  # schedule_interval: "0 * * * *"
+redshift:
+  query: |
+    BEGIN;
+    DROP VIEW IF EXISTS ba_ad_group_extended;
+    CREATE OR REPLACE VIEW ba_ad_group_extended AS (
+    WITH ad_group AS (
+    SELECT
+      a.id AS ad_group_id,
+      a.name AS ad_group_name,
+      a.created_at,
+      a.salesforce_record_id,
+      a.sales_manager_id,
+      sales_manager.name AS sales_manager_name,
+      a.organization_id,
+      a.owner_id,
+      owner.name AS owner_name,
+      a.agent_fee_rate,
+      a.budget AS initial_budget
+    FROM
+      public.ba_ad_group a
+    LEFT JOIN
+      public.ba_admin_user sales_manager ON sales_manager.id = a.sales_manager_id
+    LEFT JOIN
+      public.ba_admin_user owner ON owner.id = a.owner_id
+    ),
+    extra_budget AS (
+    SELECT
+      e.ad_group_id,
+      SUM(CASE WHEN e.extra_budget_type = 'C' THEN e.budget ELSE 0 END) AS compensation_budget,
+      SUM(CASE WHEN e.extra_budget_type = 'A' THEN e.budget ELSE 0 END) AS addition_budget,
+      SUM(CASE WHEN e.extra_budget_type = 'P' THEN e.budget ELSE 0 END) AS promotion_budget,
+      SUM(CASE WHEN e.extra_budget_type = 'O' THEN e.budget ELSE 0 END) AS carryover_budget
+    FROM
+      public.ba_extra_budget e
+    GROUP BY
+      1
+    ),
+    lineitem AS (
+    SELECT
+      l.ad_group_id,
+      LISTAGG(DISTINCT l.revenue_type, ',') AS revenue_types,
+      LISTAGG(DISTINCT l.currency, ',') AS currencies,
+      MIN(l.start_date) AS start_date,
+      MAX(l.end_date) AS end_date,
+      SUM(NVL(l.budget_v2, l.budget)) AS total_lineitem_budget
+    FROM
+      public.ba_lineitem l
+    GROUP BY
+      1
+    )
+    SELECT
+      a.ad_group_id AS id,
+      a.ad_group_name AS name,
+      a.created_at,
+      a.salesforce_record_id,
+      a.sales_manager_id,
+      a.sales_manager_name,
+      a.organization_id,
+      a.owner_id,
+      a.owner_name,
+      l.revenue_types,
+      l.currencies,
+      NVL(a.agent_fee_rate,0) AS agent_fee_rate,
+      a.initial_budget,
+      NVL(e.compensation_budget,0) AS compensation_budget,
+      NVL(e.addition_budget,0) AS addition_budget,
+      NVL(e.promotion_budget,0) AS promotion_budget,
+      NVL(e.carryover_budget,0) AS carryover_budget,
+      a.initial_budget
+      + NVL(e.compensation_budget,0)
+      + NVL(e.addition_budget,0)
+      + NVL(e.promotion_budget,0)
+      + NVL(e.carryover_budget,0) AS total_budget
+    FROM
+      ad_group a
+    LEFT JOIN
+      extra_budget e ON e.ad_group_id = a.ad_group_id
+    LEFT JOIN
+      lineitem l ON l.ad_group_id = a.ad_group_id
+    )
+    WITH NO SCHEMA BINDING;
+    END;

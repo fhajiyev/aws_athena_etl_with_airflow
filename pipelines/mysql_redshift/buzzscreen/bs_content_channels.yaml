@@ -1,0 +1,54 @@
+#  For 
+# 
+# 
+---
+pipeline_key: bs_content_channels
+pipeline_type: mysql_redshift
+incremental_sync: False
+
+mysql:
+  conn_id: buzzscreen_mysql
+  table_name: content_channels
+  fields:
+  - id
+  - name
+  - logo
+  - category
+  - organization_id
+  - created_at
+  - updated_at
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: bs_content_channels
+  fields:
+  - id
+  - name
+  - logo
+  - category
+  - organization_id
+  - created_at
+  - updated_at
+  copy_method: replace
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                INT8           NOT NULL   ENCODE ZSTD,
+      name              VARCHAR(300)   NOT NULL   ENCODE LZO,
+      logo              VARCHAR(255)   NOT NULL   ENCODE LZO,
+      category          VARCHAR(100)   NOT NULL   ENCODE LZO,
+      organization_id   INT8           NOT NULL   ENCODE ZSTD,
+      created_at        TIMESTAMP      NOT NULL   ENCODE ZSTD,
+      updated_at        TIMESTAMP      NOT NULL   ENCODE ZSTD,
+      PRIMARY KEY(id)
+    )
+    DISTSTYLE ALL
+    SORTKEY (created_at)
+    ;
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id

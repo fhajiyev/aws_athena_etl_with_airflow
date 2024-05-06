@@ -1,0 +1,103 @@
+---
+pipeline_key: buzzml_g_product_commerce_category_top100
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-11-28 00:00:00
+  schedule_interval: "0 0 * * *"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency-oracle
+    - trigger: sla_miss
+      args:
+        channel: data-emergency-oracle
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: athena_process_buzzml_g_preprocessed_user_event
+    timedelta_hours: 0
+
+sensor_soft_fail: false
+
+athena:
+  workgroup: oracle
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+          format = 'PARQUET',
+          parquet_compression = 'SNAPPY',
+          external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+      SELECT
+        CAST(product_feed_id AS BIGINT) AS product_feed_id,
+        CAST(category AS VARCHAR(255)) AS category,
+        CAST(product_count AS SMALLINT) AS product_count,
+        product_ids
+      FROM(
+        WITH
+        category_product AS (
+          SELECT
+            product_id,
+            product_feed_id,
+            category,
+            COUNT(*) AS cnt
+          FROM
+            prod_buzzml.g_preprocessed_user_event
+          WHERE
+            partition_timestamp >= TIMESTAMP '{start_time}' - INTERVAL '30' DAY
+            AND partition_timestamp < TIMESTAMP '{end_time}'
+            AND event_type = 'purchase'
+          GROUP BY
+            product_id, product_feed_id, category
+        ),
+        ranked_category AS (
+          SELECT
+            product_id,
+            product_feed_id,
+            category,
+            ROW_NUMBER() OVER (PARTITION BY product_feed_id, category ORDER BY cnt DESC) AS top
+          FROM
+            category_product
+        )
+        SELECT
+          product_feed_id,
+          category,
+          COUNT(*) AS product_count,
+          ARRAY_JOIN(ARRAY_AGG(product_id), '|') AS product_ids
+        FROM
+          ranked_category
+        WHERE
+          top <= 100
+        GROUP BY
+          product_feed_id, category
+      )
+    );
+
+  output_bucket: prod-buzzvil-data-lake
+  output_prefix: buzzml/gold/product_commerce_category_top100/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzml_g_product_commerce_category_top100
+  file_extension: parquet
+
+  database: prod_buzzml
+  table: g_product_commerce_category_top100
+  location: s3://prod-buzzvil-data-lake/buzzml/gold/product_commerce_category_top100
+
+  partition:
+    name: partition_timestamp
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+    location: s3://prod-buzzvil-data-lake/buzzml/gold/product_commerce_category_top100/year={year}/month={month}/day={day}/hour={hour}
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      product_feed_id       BIGINT,
+      category              VARCHAR(255),
+      product_count         SMALLINT,
+      product_ids           STRING
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    tblproperties("parquet.compress"="SNAPPY");

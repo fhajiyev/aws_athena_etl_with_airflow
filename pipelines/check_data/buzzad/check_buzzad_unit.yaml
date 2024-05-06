@@ -1,0 +1,23 @@
+# This pipeline checks whether any ba_unit data is present. This checks for possible truncation of the table.
+---
+pipeline_key: check_buzzad_unit
+pipeline_type: check_data
+pipeline_dag_configs:
+  start_date: 2020-10-22 15:00:00
+  schedule_interval: "0 * * * *"
+  catch_up: False
+
+augend:
+  data_source:
+    type: redshift
+    conn_id: redshift
+  query: |
+    SELECT
+      COUNT(*) AS result
+    FROM
+      ba_unit
+  multiplier: 1
+
+comparison:
+  operator: gt
+  threshold: 0

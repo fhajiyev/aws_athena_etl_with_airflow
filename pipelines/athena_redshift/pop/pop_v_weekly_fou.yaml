@@ -1,0 +1,108 @@
+# Note that
+# - interval '1 hours' is actually "interval - 16 (execution time) + 24 (day offset) - 9(utc conversion)"
+
+---
+pipeline_key: pop_v_weekly_fou
+pipeline_type: athena_redshift_sync
+pipeline_dag_configs:
+  start_date: 2020-03-29 16:00:00
+  schedule_interval: "0 16 * * SUN"
+athena:
+  table_name: bi_event
+  partition:
+    location: s3://prod-buzzvil-firehose/buzzinsight/event/
+    name: partition_timestamp
+    type: hourly
+  process_query: |
+    with
+    wau as (
+        SELECT DISTINCT
+            ifa,
+        unit_id,
+            DATE_TRUNC('week', partition_timestamp + INTERVAL '9' HOUR) as week_joined
+        FROM
+            bi_event
+        WHERE
+            name = 'pop' AND
+            type = 'show' AND
+            partition_timestamp >= TIMESTAMP'{{{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}}}' - INTERVAL '1' HOUR AND
+            partition_timestamp < TIMESTAMP'{{{{ next_execution_date.strftime('%Y-%m-%d %H:00:00') }}}}' - INTERVAL '1' HOUR
+    ), daily_fou as (
+        SELECT DISTINCT
+            ifa,
+        unit_id,
+            DATE_TRUNC('day', partition_timestamp + INTERVAL '9' HOUR) as date_joined,
+            DATE_TRUNC('week', partition_timestamp + INTERVAL '9' HOUR) as week_joined
+        FROM
+            bi_event
+        WHERE
+            name = 'feed' AND
+            type = 'show' AND
+            partition_timestamp >= TIMESTAMP'{{{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}}}' - INTERVAL '1' HOUR AND
+            partition_timestamp < TIMESTAMP'{{{{ next_execution_date.strftime('%Y-%m-%d %H:00:00') }}}}' - INTERVAL '1' HOUR
+    )
+    SELECT
+        wau.week_joined,
+        wau.ifa,
+        wau.unit_id,
+        COUNT(df.date_joined) AS days_active
+    FROM
+        wau
+        LEFT JOIN daily_fou df ON
+            wau.ifa = df.ifa AND
+            wau.week_joined = df.week_joined AND
+            wau.unit_id = df.unit_id
+    GROUP BY
+        1, 2, 3
+  output_bucket: prod-buzzvil-data-lake
+  output_prefix: pop/mart/weekly_fou
+  file_key: pop_weekly_fou
+
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE spectrum.bi_event (
+      app_id             INT8,
+      unit_id            INT8,
+      type               VARCHAR(255),
+      name               VARCHAR(255),
+      created_at         VARCHAR(255),
+      version            INT4,
+      user_id            VARCHAR(255),
+      sub_user_id        VARCHAR(255),
+      guid               VARCHAR(255),
+      ifa                VARCHAR(255),
+      sex                VARCHAR(255),
+      year_of_birth      INT4,
+      carrier            VARCHAR(255),
+      device_name        VARCHAR(255),
+      device_os          VARCHAR(255),
+      device_resolution  VARCHAR(255),
+      ip                 VARCHAR(255),
+      ip_country         VARCHAR(255),
+      attributes         VARCHAR(65535)
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1'
+    ) LOCATION 's3://prod-buzzvil-firehose/buzzinsight/event/';
+redshift:
+  table_name: m_pop_weekly_fou
+  fields:
+  - week_joined
+  - ifa
+  - unit_id
+  - days_active
+  increment_key: week_joined
+  increment_key_type: timestamp
+  copy_method: incremental
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      week_joined          TIMESTAMP      NOT NULL       ENCODE ZSTD,
+      ifa                  VARCHAR(64)    NULL           ENCODE ZSTD,
+      unit_id              INT8           NULL           ENCODE ZSTD,
+      days_active          INT8           NULL           ENCODE ZSTD
+
+    )
+    DISTKEY(ifa)
+    SORTKEY(week_joined);

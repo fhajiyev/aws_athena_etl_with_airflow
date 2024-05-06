@@ -1,0 +1,56 @@
+---
+pipeline_key: sj_user_transaction
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: slidejoy_mysql
+  table_name: tbl_userTransaction
+  fields:
+  - transactionId
+  - userId
+  - productId
+  - carats
+  - account
+  - requestDateTime
+  - errorMessage
+  - updateDateTime
+  - status
+  increment_key: updateDateTime
+  increment_key_type: timestamp
+  unique_key_list:
+  - transactionId
+
+redshift:
+  table_name: sj_user_transaction
+  fields:
+  - transactionId
+  - userId
+  - productId
+  - carats
+  - account
+  - requestDate
+  - errorMessage
+  - updateDate
+  - status
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      transactionId   INT8           NOT NULL       ENCODE ZSTD,
+      userId          VARCHAR(64)    NOT NULL       ENCODE ZSTD,
+      productId       INT8           NOT NULL       ENCODE ZSTD,
+      carats          INT8           DEFAULT NULL   ENCODE ZSTD,
+      account         VARCHAR(100)   NOT NULL       ENCODE ZSTD,
+      requestDate     TIMESTAMP      NOT NULL       ENCODE ZSTD,
+      errorMessage    VARCHAR(100)   DEFAULT NULL   ENCODE ZSTD,
+      updateDate      TIMESTAMP      NOT NULL       ENCODE ZSTD,
+      status          INT2           DEFAULT NULL   ENCODE ZSTD
+    )
+    DISTKEY(userId)
+    SORTKEY(requestDate, updateDate)
+    ;
+  increment_key: updateDate
+  increment_key_type: timestamp
+  unique_key_list:
+  - transactionId

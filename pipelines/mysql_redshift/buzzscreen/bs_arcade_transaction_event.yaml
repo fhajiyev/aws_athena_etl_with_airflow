@@ -1,0 +1,66 @@
+#
+#
+#
+---
+pipeline_key: bs_arcade_transaction_event
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: buzzscreen_mysql
+  table_name: arcade_transaction_events
+  fields:
+  - id
+  - app_id
+  - unit_id
+  - transaction_id
+  - level
+  - event
+  - status
+  - point
+  - created_at
+  - arcade_game_id
+  - device_id
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: bs_arcade_transaction_event
+  fields:
+  - id
+  - app_id
+  - unit_id
+  - transaction_id
+  - level
+  - event
+  - status
+  - point
+  - created_at
+  - arcade_game_id
+  - device_id
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id               INT8          NOT NULL       ENCODE ZSTD,
+      app_id           INT8          NOT NULL       ENCODE ZSTD,
+      unit_id          INT8          NOT NULL       ENCODE ZSTD,
+      transaction_id   INT8          NOT NULL       ENCODE ZSTD,
+      level            INT8          NOT NULL       ENCODE ZSTD,
+      event            VARCHAR(64)   NOT NULL       ENCODE ZSTD,
+      status           INT8          NOT NULL       ENCODE ZSTD,
+      point            INT8          DEFAULT NULL   ENCODE ZSTD,
+      created_at       TIMESTAMP     NOT NULL       ENCODE ZSTD,
+      arcade_game_id   INT8          NOT NULL       ENCODE ZSTD,
+      device_id        INT8          NOT NULL       ENCODE ZSTD,
+      UNIQUE(device_id, transaction_id, event)
+    )
+    DISTKEY (device_id)
+    SORTKEY (transaction_id)
+    ;
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id

@@ -1,0 +1,20 @@
+---
+pipeline_key: test_augend_only_simple.yaml
+pipeline_type: check_data
+pipeline_dag_configs:
+  start_date: 2020-10-22 15:00:00
+  schedule_interval: "0 * * * *"
+  catch_up: False
+
+augend:
+  data_source:
+    type: redshift
+    conn_id: redshift_conn
+  query: |
+    SELECT
+      1;
+  multiplier: 1
+
+comparison:
+  operator: eq
+  threshold: 1.0

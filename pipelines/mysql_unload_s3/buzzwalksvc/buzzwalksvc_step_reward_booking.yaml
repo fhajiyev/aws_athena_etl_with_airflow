@@ -1,0 +1,75 @@
+# CREATE TABLE `step_reward_booking` (
+#   `id` int(11) NOT NULL AUTO_INCREMENT,
+#   `app_id` bigint(20) NOT NULL,
+#   `user_id` bigint(20) NOT NULL,
+#   `reward_date` datetime(6) NOT NULL,
+#   `step` int(10) unsigned NOT NULL,
+#   `status` smallint(5) unsigned NOT NULL,
+#   `transaction_id` varchar(255) NOT NULL,
+#   `updated_at` datetime(6) NOT NULL,
+#   `created_at` datetime(6) NOT NULL,
+#   `amount` int(10) unsigned NOT NULL,
+#   `config_id` bigint(20) NOT NULL,
+#   PRIMARY KEY (`id`),
+#   UNIQUE KEY `transaction_id` (`transaction_id`),
+#   UNIQUE KEY `step_reward_booking_user_id_reward_date_step_196736f6_uniq` (`user_id`,`reward_date`,`step`),
+#   CONSTRAINT `step_reward_booking_chk_1` CHECK ((`step` >= 0)),
+#   CONSTRAINT `step_reward_booking_chk_2` CHECK ((`status` >= 0)),
+#   CONSTRAINT `step_reward_booking_chk_3` CHECK ((`amount` >= 0))
+# ) ENGINE=InnoDB AUTO_INCREMENT=124556 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+---
+pipeline_key: buzzwalksvc_ls_step_reward_booking
+pipeline_type: mysql_unload_s3
+pipeline_dag_configs:
+  start_date: 2020-09-16 17:00:00
+  schedule_interval: "0 17 * * *"
+mysql:
+  conn_id: buzzwalksvc_mysql
+  table_name: step_reward_booking
+  fields:
+  - id
+  - app_id
+  - user_id
+  - reward_date
+  - step
+  - status
+  - transaction_id
+  - updated_at
+  - created_at
+  - amount
+  - config_id
+  increment_key: id
+  increment_key_type: numeric
+s3:
+  bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  prefix: buzzwalksvc/landing_snapshot/step_reward_booking/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzwalksvc_ls_step_reward_booking
+  data_format: parquet
+
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id               BIGINT,
+      app_id           BIGINT,
+      user_id          BIGINT,
+      reward_date      TIMESTAMP,
+      step             BIGINT,
+      status           TINYINT,
+      transaction_id   VARCHAR(255),
+      updated_at       TIMESTAMP,
+      created_at       TIMESTAMP,
+      amount           BIGINT,
+      config_id        BIGINT
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY");
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzwalksvc"
+  table: ls_step_reward_booking
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/buzzwalksvc/landing_snapshot/step_reward_booking"
+  partition:
+    key: partition_timestamp
+    value: "{{execution_date.strftime('%Y-%m-%d %H:00:00')}}"
+    subdir: "year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}"
+

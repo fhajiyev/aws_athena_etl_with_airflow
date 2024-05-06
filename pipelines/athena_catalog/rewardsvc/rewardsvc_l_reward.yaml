@@ -1,0 +1,46 @@
+---
+pipeline_key: rewardsvc_l_reward
+pipeline_type: athena_catalog
+pipeline_dag_configs:
+  start_date: 2020-04-29 00:00:00
+  schedule_interval: "0 * * * *"
+
+downstream_dependencies:
+  - dag_id: athena_process_rewardsvc_g_reward
+    task_id: generate_uuid
+
+athena:
+  database: "{{ var.value.get('server_env', 'prod') }}_rewardsvc"
+  table: l_reward
+  location: s3://prod-buzzvil-data-lake/rewardsvc/landing/reward
+  partition:
+    name: partition_timestamp
+    location: s3://prod-buzzvil-data-lake/rewardsvc/landing/reward/{year}/{month}/{day}/{hour}
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      eventname                   string,
+      sequencenumber              string,
+      approximatecreationdatetime timestamp,
+      newimage struct<
+          app:struct<n:string>,
+          rs:struct<s:string>,
+          rt:struct<s:string>,
+          pid:struct<s:string>,
+          am:struct<n:string>,
+          rid:struct<n:string>,
+          ua:struct<n:string>,
+          tid:struct<s:string>,
+          et:struct<s:string>,
+          sc:struct<n:string>,
+          v:struct<n:string>,
+          aid:struct<n:string>,
+          ca:struct<n:string>,
+          ext:struct<s:string>
+      >
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1'
+    ) LOCATION '{location}';

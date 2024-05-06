@@ -1,0 +1,297 @@
+---
+pipeline_key: segmentsvc_g_event_ba_common
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-08-17 00:00:00
+  schedule_interval: "0 * * * *"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: dev-emergency-mugshot
+    - trigger: sla_miss
+      args:
+        channel: dev-emergency-mugshot
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: athena_catalog_ba_l_impression
+    timedelta_hours: 0
+  - dag_id: athena_catalog_ba_l_click
+    timedelta_hours: 0
+  - dag_id: athena_catalog_ba_l_unit
+    timedelta_hours: 0
+  - dag_id: athena_catalog_bs_l_point
+    timedelta_hours: 0
+  - dag_id: athena_catalog_rewardsvc_l_reward
+    timedelta_hours: 0
+  - dag_id: mysql_s3_athena_ba_l_conversion
+    timedelta_hours: 0
+  - dag_id: athena_catalog_ba_l_lineitem
+    timedelta_hours: 0
+
+athena:
+  workgroup: segmentsvc
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+      format = 'PARQUET',
+      parquet_compression = 'SNAPPY',
+      external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+    SELECT
+        315038294298513 AS data_source_id,
+        event_type AS event_type,
+        event_time AS event_timestamp,
+        payload AS payload,
+        id_pair[1] as uid_key,
+        id_pair[2] as uid_value
+    FROM
+    (
+
+      SELECT
+        'click' AS event_type,
+        ARRAY[
+          ARRAY['IFA', t1.ifa],
+          ARRAY[CASE WHEN t2.app_id is null THEN null ELSE CONCAT(CAST(t2.app_id AS VARCHAR), ':', 'AppUserID') END, t1.publisher_user_id]
+          ] AS id_pairs,
+        MAP(
+          ARRAY[
+            'viewer_id',
+            'unit_id',
+            'lineitem_id',
+            'ip',
+            'sales',
+            'year_of_birth',
+            'sex',
+            'carrier',
+            'region',
+            'platform',
+            'country',
+            'device_name',
+            'publisher_user_id',
+            'relationship',
+            'ifa',
+            'udid',
+            'adid',
+            'user_agent',
+            'app_version',
+            'lat',
+            'lon',
+            'web_user_agent',
+            'session_id',
+            'creative_id',
+            'adnetwork_id',
+            'adnetwork_campaign_id',
+            'registered_days',
+            'network_type',
+            'sub_publisher_id',
+            'request_id',
+            'product_code',
+            'product_id',
+            'click_id',
+            'time',
+            'allocation_id',
+            'lineitem_name',
+            'lineitem_category',
+            'revenue_type'
+          ],
+          ARRAY[
+            CAST(t1.viewer_id AS VARCHAR),
+            CAST(t1.unit_id AS VARCHAR),
+            CAST(t1.lineitem_id AS VARCHAR),
+            CAST(t1.ip AS VARCHAR),
+            CAST(t1.sales AS VARCHAR),
+            CAST(t1.year_of_birth AS VARCHAR),
+            CAST(t1.sex AS VARCHAR),
+            CAST(t1.carrier AS VARCHAR),
+            CAST(t1.region AS VARCHAR),
+            CAST(t1.platform AS VARCHAR),
+            CAST(t1.country AS VARCHAR),
+            CAST(t1.device_name AS VARCHAR),
+            CAST(t1.publisher_user_id AS VARCHAR),
+            CAST(t1.relationship AS VARCHAR),
+            CAST(t1.ifa AS VARCHAR),
+            CAST(t1.udid AS VARCHAR),
+            CAST(t1.adid AS VARCHAR),
+            CAST(t1.user_agent AS VARCHAR),
+            CAST(t1.app_version AS VARCHAR),
+            CAST(t1.lat AS VARCHAR),
+            CAST(t1.lon AS VARCHAR),
+            CAST(t1.web_user_agent AS VARCHAR),
+            CAST(t1.session_id AS VARCHAR),
+            CAST(t1.creative_id AS VARCHAR),
+            CAST(t1.adnetwork_id AS VARCHAR),
+            CAST(t1.adnetwork_campaign_id AS VARCHAR),
+            CAST(t1.registered_days AS VARCHAR),
+            CAST(t1.network_type AS VARCHAR),
+            CAST(t1.sub_publisher_id AS VARCHAR),
+            CAST(t1.request_id AS VARCHAR),
+            CAST(t1.product_code AS VARCHAR),
+            CAST(t1.product_id AS VARCHAR),
+            CAST(t1.click_id AS VARCHAR),
+            CAST(t1.time AS VARCHAR),
+            CAST(t1.allocation_id AS VARCHAR),
+            CAST(t3.lineitem_name AS VARCHAR),
+            CAST(t3.lineitem_category AS VARCHAR),
+            CAST(t3.lineitem_revenue_type AS VARCHAR)
+          ]
+        ) AS payload,
+        t1.time AS event_time
+      FROM
+        prod_buzzad.l_click t1
+      LEFT JOIN
+        prod_buzzad.l_unit t2
+      ON
+        t1.unit_id = t2.id
+      LEFT JOIN
+      (
+        select
+          a.id as lineitem_id,
+          a.revenue_type as lineitem_revenue_type,
+          a.item_name as lineitem_name,
+          a.category as lineitem_category
+        from
+          prod_buzzad.l_lineitem as a
+        where
+        a.partition_timestamp >= TIMESTAMP'{start_time}' AND
+        a.partition_timestamp < TIMESTAMP'{end_time}'
+      ) t3
+      ON
+        t1.lineitem_id = t3.lineitem_id
+      WHERE
+        t1.partition_timestamp >= TIMESTAMP'{start_time}' AND
+        t1.partition_timestamp < TIMESTAMP'{end_time}' AND
+        t2.partition_timestamp >= TIMESTAMP'{start_time}' AND
+        t2.partition_timestamp < TIMESTAMP'{end_time}'
+
+      UNION ALL
+
+      SELECT
+        'conversion' AS event_type,
+        ARRAY[
+          ARRAY['IFA', SPLIT_PART(viewer_id, ':', 2)]
+          ] AS id_pairs,
+        MAP(
+          ARRAY[
+            'id',
+            'viewer_id',
+            'order_id',
+            'lineitem_id',
+            'unit_id',
+            'campaign_id',
+            'campaign_name',
+            'device_os',
+            'created_at',
+            'adnetwork_id',
+            'seq_id',
+            'sub_type',
+            'payout',
+            'currency',
+            'unit_payout',
+            'unit_currency',
+            'ip',
+            'raw_data_click_id',
+            'updated_at',
+            'is_succeeded',
+            'reward',
+            'sales',
+            'unit_sales',
+            'is_forced_conversion',
+            'country',
+            'lineitem_name',
+            'lineitem_category',
+            'revenue_type'
+          ],
+          ARRAY[
+            CAST(t1.id AS VARCHAR),
+            CAST(t1.viewer_id AS VARCHAR),
+            CAST(t1.order_id AS VARCHAR),
+            CAST(t1.lineitem_id AS VARCHAR),
+            CAST(t1.unit_id AS VARCHAR),
+            CAST(t1.campaign_id AS VARCHAR),
+            CAST(t1.campaign_name AS VARCHAR),
+            CAST(t1.device_os AS VARCHAR),
+            CAST(t1.created_at AS VARCHAR),
+            CAST(t1.adnetwork_id AS VARCHAR),
+            CAST(t1.seq_id AS VARCHAR),
+            CAST(t1.sub_type AS VARCHAR),
+            CAST(t1.payout AS VARCHAR),
+            CAST(t1.currency AS VARCHAR),
+            CAST(t1.unit_payout AS VARCHAR),
+            CAST(t1.unit_currency AS VARCHAR),
+            CAST(t1.ip AS VARCHAR),
+            CAST(t1.raw_data_click_id AS VARCHAR),
+            CAST(t1.updated_at AS VARCHAR),
+            CAST(t1.is_succeeded AS VARCHAR),
+            CAST(t1.reward AS VARCHAR),
+            CAST(t1.sales AS VARCHAR),
+            CAST(t1.unit_sales AS VARCHAR),
+            CAST(t1.is_forced_conversion AS VARCHAR),
+            CAST(t1.country AS VARCHAR),
+            CAST(t2.lineitem_name AS VARCHAR),
+            CAST(t2.lineitem_category AS VARCHAR),
+            CAST(t2.lineitem_revenue_type AS VARCHAR)
+          ]
+        ) AS payload,
+        t1.created_at AS event_time
+      FROM
+        prod_buzzad.l_conversion t1
+      LEFT JOIN
+      (
+        select
+          a.id as lineitem_id,
+          a.revenue_type as lineitem_revenue_type,
+          a.item_name as lineitem_name,
+          a.category as lineitem_category
+        from
+          prod_buzzad.l_lineitem as a
+        where
+        a.partition_timestamp >= TIMESTAMP'{start_time}' AND
+        a.partition_timestamp < TIMESTAMP'{end_time}'
+      ) t2
+      ON
+        t1.lineitem_id = t2.lineitem_id
+      WHERE
+        t1.partition_timestamp >= TIMESTAMP'{start_time}' AND
+        t1.partition_timestamp < TIMESTAMP'{end_time}'
+
+    )
+
+    CROSS JOIN UNNEST(id_pairs) AS t(id_pair)
+    WHERE
+    id_pair[1] IS NOT null AND id_pair[1] <> '' AND
+    id_pair[2] IS NOT null AND id_pair[2] <> ''
+
+    );
+  output_bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  output_prefix: "segmentsvc/gold/event/year={year}/month={month}/day={day}/hour={hour}/ba_common"
+  file_key: ba_common
+  file_extension: parquet
+
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      `data_source_id` BIGINT,
+      `event_type` STRING,
+      `event_timestamp` TIMESTAMP,
+      `payload` MAP<STRING,STRING>,
+      `uid_key` STRING,
+      `uid_value` STRING
+    )
+    PARTITIONED BY (
+      partition_timestamp TIMESTAMP
+    )
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY")
+    ;
+  database: "{{ var.value.get('server_env', 'prod') }}_segmentsvc"
+  table: g_event_ba_common
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/segmentsvc/gold/event/"
+  partition:
+    name: partition_timestamp
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+    location: "s3://{{{{ var.value.get('server_env', 'prod') }}}}-buzzvil-data-lake/segmentsvc/gold/event/year={year}/month={month}/day={day}/hour={hour}/ba_common"

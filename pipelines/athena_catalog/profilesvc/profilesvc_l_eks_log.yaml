@@ -1,0 +1,38 @@
+---
+pipeline_key: profilesvc_l_eks_log
+pipeline_type: athena_catalog
+pipeline_dag_configs:
+  start_date: 2020-10-13 05:00:00
+  schedule_interval: "0 * * * *"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: dev-emergency-mugshot
+    - trigger: sla_miss
+      args:
+        channel: dev-emergency-mugshot
+    - trigger: retry
+      args:
+        channel: data-warning
+
+athena:
+  database: "{{ var.value.get('server_env', 'prod') }}_profilesvc"
+  table: l_eks_log
+  location: s3://prod-buzzvil-data-lake/eks/cluster-logs/profilesvc/profilesvc
+  partition:
+    name: partition_timestamp
+    location: s3://prod-buzzvil-data-lake/eks/cluster-logs/profilesvc/profilesvc/{year}/{month}/{day}/{hour}
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+        `log`  STRING,
+        `time` STRING
+    )
+    PARTITIONED BY (
+      partition_timestamp TIMESTAMP
+    )
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    STORED AS TEXTFILE
+    LOCATION '{location}';

@@ -1,0 +1,61 @@
+---
+pipeline_key: buzzwalksvc_step_reward_booking
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: buzzwalksvc_mysql
+  table_name: step_reward_booking
+  fields:
+  - id
+  - app_id
+  - user_id
+  - reward_date
+  - step
+  - status
+  - transaction_id
+  - updated_at
+  - created_at
+  - amount
+  - config_id
+  increment_key: updated_at
+  increment_key_type: timestamp
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: buzzwalksvc_step_reward_booking
+  fields:
+  - id
+  - app_id
+  - user_id
+  - reward_date
+  - step
+  - status
+  - transaction_id
+  - updated_at
+  - created_at
+  - amount
+  - config_id
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name} (
+      id               INT8           NOT NULL,
+      app_id           INT8           NOT NULL   ENCODE AZ64,
+      user_id          INT8           NOT NULL   ENCODE AZ64,
+      reward_date      TIMESTAMP      NOT NULL   ENCODE ZSTD,
+      step             INT8           NOT NULL   ENCODE AZ64,
+      status           INT2           NOT NULL   ENCODE AZ64,
+      transaction_id   VARCHAR(255)   NOT NULL   ENCODE ZSTD,
+      updated_at       TIMESTAMP      NOT NULL   ENCODE ZSTD,
+      created_at       TIMESTAMP      NOT NULL   ENCODE ZSTD,
+      amount           INT8           NOT NULL   ENCODE AZ64,
+      config_id        INT8           NOT NULL   ENCODE AZ64,
+      PRIMARY KEY (id)
+    )
+    DISTKEY(user_id)
+    SORTKEY(updated_at)
+  increment_key: updated_at
+  increment_key_type: timestamp
+  unique_key_list:
+  - id

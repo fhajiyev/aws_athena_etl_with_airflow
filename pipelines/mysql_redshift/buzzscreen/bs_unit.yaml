@@ -1,0 +1,75 @@
+#  For
+#
+#
+---
+pipeline_key: bs_unit
+pipeline_type: mysql_redshift
+incremental_sync: False
+
+mysql:
+  conn_id: buzzscreen_mysql
+  table_name: unit
+  fields:
+  - id
+  - app_id
+  - name
+  - currency
+  - country
+  - timezone
+  - organization_id
+  - first_screen_ratio
+  - pager_ratio
+  - page_limit
+  - base_reward
+  - buzzvil_landing_reward
+  - adjust_period_config
+  - is_deleted
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: bs_unit
+  fields:
+  - id
+  - app_id
+  - name
+  - currency
+  - country
+  - timezone
+  - organization_id
+  - first_screen_ratio
+  - pager_ratio
+  - page_limit
+  - base_reward
+  - buzzvil_landing_reward
+  - adjust_period_config
+  - is_deleted
+  copy_method: replace
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                      INT8           NOT NULL                 ENCODE ZSTD,
+      app_id                  INT8           NOT NULL                 ENCODE ZSTD,
+      name                    VARCHAR(200)   NOT NULL DEFAULT ''      ENCODE LZO,
+      currency                VARCHAR(3)     NOT NULL                 ENCODE ZSTD,
+      country                 VARCHAR(2)     NULL                     ENCODE ZSTD,
+      timezone                VARCHAR(32)    NULL                     ENCODE ZSTD,
+      organization_id         INT4           NULL                     ENCODE ZSTD,
+      first_screen_ratio      VARCHAR(5)     DEFAULT NULL             ENCODE ZSTD,
+      pager_ratio             VARCHAR(5)     DEFAULT NULL             ENCODE ZSTD,
+      page_limit              INT4           DEFAULT NULL             ENCODE ZSTD,
+      base_reward             INT2           DEFAULT NULL             ENCODE ZSTD,
+      buzzvil_landing_reward  INT2           DEFAULT NULL             ENCODE ZSTD,
+      adjust_period_config    VARCHAR(512)   DEFAULT NULL             ENCODE ZSTD,
+      is_deleted              BOOL           NOT NULL DEFAULT FALSE   ENCODE ZSTD,
+      PRIMARY KEY(id)
+    )
+    DISTSTYLE ALL
+    SORTKEY(id)
+    ;
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id

@@ -1,0 +1,106 @@
+# Note that
+#
+---
+pipeline_key: m1_d__gbd_kakaopage
+pipeline_type: redshift_transform_load
+pipeline_dag_configs:
+  start_date: 2020-07-01 17:00:00
+  schedule_interval: "0 17 * * *"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-team
+    - trigger: sla_miss
+      args:
+        channel: data-emergency
+    - trigger: retry
+      args:
+        channel: data-warning
+
+#upstream_dependencies:
+#  - dag_id: athena_redshift_sync_ba_imp_dau
+#    timedelta_hours: 0
+#  - dag_id: athena_redshift_sync_ba_alloc_dau
+#    timedelta_hours: 0
+#  - dag_id: redshift_transform_load_ba_alloc_nru
+#    timedelta_hours: 0
+
+transform:
+  select_query: |
+    select
+        pu.kst_at,
+        unit_name,
+        unit_id,
+        lineitem_id,
+        b.item_name as campaign_name,
+        publisher_user_id,
+        ifa
+    from (
+            select
+                DATE_TRUNC('day' ,c.created_at  + INTERVAL '9 hours')  kst_at,
+                u.name as unit_name,
+                u.id as unit_id,
+                c.lineitem_id,
+                c.publisher_user_id,
+                c.ifa
+            from public.ba_unit u , public.ba_click c
+            where u.id in (533764196999096,375331333857038)
+            and u.id = c.unit_id
+            and c.created_at >=   TIMESTAMP'{start_time}' - INTERVAL '2 hours'
+          and c.created_at <  TIMESTAMP'{end_time}' - INTERVAL '2 hours'
+            and u.name like 'BO_API%'
+            group by
+                DATE_TRUNC('day' ,c.created_at  + INTERVAL '9 hours'),
+                u.name,
+                u.id,
+                c.lineitem_id,
+                c.publisher_user_id,
+                c.ifa
+        ) pu, public.ba_lineitem b
+    where pu.lineitem_id = b.id
+
+  delete_query : |
+    DELETE
+    FROM
+      datavil.m1_d__gbd_kakaopage
+    WHERE
+      kst_at >= TIMESTAMP'{start_time}' - interval '17 hours' + INTERVAL '24 HOURS' AND
+      kst_at < TIMESTAMP'{end_time}' - interval '17 hours' + INTERVAL '24 hours'
+
+redshift:
+  table_name: datavil.m1_d__gbd_kakaopage
+  fields:
+  - kst_at
+  - unit_name
+  - unit_id
+  - lineitem_id
+  - campaign_name
+  - publisher_user_id
+  - ifa
+  unique_key_list:
+  - kst_at
+  - unit_name
+  - unit_id
+  - lineitem_id
+  - campaign_name
+  - publisher_user_id
+  - ifa
+  increment_key: kst_at
+  increment_key_type: timestamp
+  copy_method: incremental
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+        kst_at            TIMESTAMP     ENCODE ZSTD,
+        unit_name         VARCHAR(512)  ENCODE ZSTD,
+        unit_id           BIGINT        ENCODE AZ64,
+        lineitem_id       BIGINT        ENCODE AZ64,
+        campaign_name     VARCHAR(1024) ENCODE ZSTD,
+        publisher_user_id VARCHAR(512)  ENCODE ZSTD,
+        ifa               VARCHAR(64)   ENCODE ZSTD
+    )
+    DISTKEY(unit_id)
+    SORTKEY(kst_at)
+    ;

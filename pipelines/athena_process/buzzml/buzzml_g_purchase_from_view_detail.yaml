@@ -1,0 +1,205 @@
+---
+pipeline_key: buzzml_g_purchase_from_view_detail
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-08-01 01:00:00
+  schedule_interval: "@hourly"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency-oracle
+    - trigger: sla_miss
+      args:
+        channel: data-emergency-oracle
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: athena_catalog_ba_l_user_event
+    timedelta_hours: 1
+  - dag_id: redshift_s3_sync_ba_l_product
+    timedelta_hours: 1
+
+sensor_soft_fail: false
+
+athena:
+  workgroup: oracle
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+          format = 'PARQUET',
+          parquet_compression = 'SNAPPY',
+          external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+      SELECT
+        CAST(viewer_id AS VARCHAR(64)) AS viewer_id,
+        CAST(allocation_id AS VARCHAR(64)) AS allocation_id,
+        CAST(lineitem_id AS BIGINT) AS lineitem_id,
+        CAST(unit_id AS BIGINT) AS unit_id,
+        CAST(product_id AS BIGINT) AS product_id,
+        CAST(product_feed_id AS BIGINT) AS product_feed_id,
+        CAST(user_action AS VARCHAR(32)) AS user_action,
+        CAST(is_occurred AS BOOLEAN) AS is_occurred,
+        CAST(reward_condition AS VARCHAR(64)) AS reward_condition,
+        CAST(event_time AS VARCHAR(64)) AS occurred_at
+      FROM(
+          WITH
+          flatten_event AS(
+              SELECT
+                  viewer_id,
+                  lineitem_id,
+                  unit_id,
+                  event_type,
+                  DATE_PARSE(pu.event_time,'%Y-%m-%d %H:%i:%s') AS event_time,
+                  event_source_id,
+                  product_code
+              FROM
+                  prod_buzzad.l_user_event AS pu
+              CROSS JOIN UNNEST(SPLIT(product_codes, ',')) AS t (product_code)
+              WHERE
+                  pu.partition_timestamp     >= TIMESTAMP'{start_time}' - INTERVAL '1' HOUR
+                  AND pu.partition_timestamp <  TIMESTAMP'{end_time}'
+                  AND DATE_PARSE(pu.event_time,'%Y-%m-%d %H:%i:%s') >= TIMESTAMP'{start_time}' - INTERVAL '1' HOUR
+                  AND pu.extra_segment1 != ''
+                  AND pu.viewer_id != ''
+                  AND pu.event_type IN ('view_detail', 'purchase')
+          ),
+          events AS (
+              SELECT
+                  pu.viewer_id,
+                  pu.lineitem_id,
+                  pu.unit_id,
+                  pp.id AS product_id,
+                  pm.product_feed_id,
+                  pu.event_type,
+                  pu.event_time
+              FROM
+                  flatten_event AS pu
+              INNER JOIN
+                  prod_buzzml.product_mapping AS pm
+                  ON pu.event_source_id = pm.event_source_id
+              INNER JOIN(
+                  SELECT
+                      id,
+                      ARBITRARY(product_feed_id) AS product_feed_id,
+                      ARBITRARY(code) AS code
+                  FROM
+                      prod_buzzad.l_product
+                  GROUP BY
+                      id
+              ) AS pp
+                  ON pm.product_feed_id = pp.product_feed_id
+                  AND pu.product_code = pp.code
+          ),
+          view_detail AS (
+              SELECT
+                  viewer_id,
+                  ARBITRARY(lineitem_id) AS lineitem_id,
+                  ARBITRARY(unit_id) AS unit_id,
+                  product_id,
+                  ARBITRARY(product_feed_id) AS product_feed_id,
+                  MAX(event_time) AS event_time
+              FROM
+                  events
+              WHERE
+                  event_type = 'view_detail'
+                  AND event_time < TIMESTAMP'{end_time}' - INTERVAL '1' HOUR
+              GROUP BY
+                  viewer_id, product_id
+          ),
+          purchase AS (
+              SELECT
+                  viewer_id,
+                  lineitem_id,
+                  unit_id,
+                  product_id,
+                  product_feed_id,
+                  event_time
+              FROM
+                  events
+              WHERE
+                  event_type = 'purchase'
+          ),
+          purchase_occurred AS (
+              SELECT
+                  viewer_id,
+                  NULL AS allocation_id,
+                  lineitem_id,
+                  unit_id,
+                  product_id,
+                  product_feed_id,
+                  'purchase_from_view_detail' AS user_action,
+                  TRUE AS is_occurred,
+                  NULL AS reward_condition,
+                  event_time
+              FROM
+                  purchase
+              WHERE
+                  event_time < TIMESTAMP'{end_time}' - INTERVAL '1' HOUR
+          ),
+          purchase_not_occurred AS (
+              SELECT
+                  view_detail.viewer_id,
+                  NULL AS allocation_id,
+                  view_detail.lineitem_id,
+                  view_detail.unit_id,
+                  view_detail.product_id,
+                  view_detail.product_feed_id,
+                  'purchase_from_view_detail' AS user_action,
+                  FALSE AS is_occurred,
+                  NULL AS reward_condition,
+                  view_detail.event_time
+              FROM
+                  view_detail
+              LEFT JOIN
+                  purchase
+                  ON view_detail.viewer_id = purchase.viewer_id
+                  AND view_detail.product_id = purchase.product_id
+              WHERE
+                  purchase.viewer_id IS NULL
+          )
+          SELECT * FROM purchase_occurred
+          UNION
+          SELECT * FROM purchase_not_occurred
+      )
+    );
+
+  output_bucket: prod-buzzvil-data-lake
+  output_prefix: buzzml/gold/purchase_from_view_detail/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzml_g_purchase_from_view_detail
+  file_extension: parquet
+
+  database: prod_buzzml
+  table: g_purchase_from_view_detail
+  location: s3://prod-buzzvil-data-lake/buzzml/gold/purchase_from_view_detail
+
+  partition:
+    name: partition_timestamp
+    value: "{{ (execution_date - macros.timedelta(hours=1)).strftime('%Y-%m-%d %H:00:00') }}"
+    location: s3://prod-buzzvil-data-lake/buzzml/gold/purchase_from_view_detail/year={year}/month={month}/day={day}/hour={hour}
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      viewer_id                VARCHAR(64),
+      allocation_id            VARCHAR(64),
+      lineitem_id              BIGINT,
+      unit_id                  BIGINT,
+      product_id               BIGINT,
+      product_feed_id          BIGINT,
+      user_action              VARCHAR(32),
+      is_occurred              BOOLEAN,
+      reward_condition         VARCHAR(64),
+      occurred_at              VARCHAR(64)
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    tblproperties("parquet.compress"="SNAPPY");
+
+  # Below time configs are needed to set time prefix for S3 directory.
+  year:  "{{ (execution_date - macros.timedelta(hours=1)).strftime('%Y') }}"
+  month: "{{ (execution_date - macros.timedelta(hours=1)).strftime('%m') }}"
+  day:   "{{ (execution_date - macros.timedelta(hours=1)).strftime('%d') }}"
+  hour:  "{{ (execution_date - macros.timedelta(hours=1)).strftime('%H') }}"

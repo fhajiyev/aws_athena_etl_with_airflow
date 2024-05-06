@@ -1,0 +1,120 @@
+---
+pipeline_key: buzzml_g_user_inactive_period
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-11-28 00:00:00
+  schedule_interval: "0 0 * * *"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency-oracle
+    - trigger: sla_miss
+      args:
+        channel: data-emergency-oracle
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: athena_process_buzzml_g_preprocessed_user_event_all_product
+    timedelta_hours: -23
+
+sensor_soft_fail: false
+
+athena:
+  workgroup: oracle
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+          format = 'PARQUET',
+          parquet_compression = 'SNAPPY',
+          external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+      SELECT
+        users.viewer_id AS viewer_id,
+        CAST(users.commerce AS VARCHAR(64)) AS commerce,
+        CAST(users.model AS VARCHAR(64)) AS model,
+        COALESCE(DATE_DIFF('day', last_vd.last_time, TIMESTAMP '{start_time}'), 28) AS inactive_view_detail_day,
+        COALESCE(DATE_DIFF('day', last_atc.last_time, TIMESTAMP '{start_time}'), 28) AS inactive_add_to_cart_day,
+        COALESCE(DATE_DIFF('day', last_p.last_time, TIMESTAMP '{start_time}'), 28) AS inactive_purchase_day
+      FROM(
+        SELECT viewer_id, 'cj' AS commerce, 'bert' AS model FROM prod_buzzml.abtest_cj_bert_201130
+        UNION
+        SELECT viewer_id, 'cj' AS commerce, 'control' AS model FROM prod_buzzml.abtest_cj_control_201130
+        UNION
+        SELECT viewer_id, 'ssg' AS commerce, 'bert' AS model FROM prod_buzzml.abtest_ssg_bert_201130
+        UNION
+        SELECT viewer_id, 'ssg' AS commerce, 'control' AS model FROM prod_buzzml.abtest_ssg_control_201130
+      ) AS users
+      LEFT JOIN(
+        SELECT
+          viewer_id, MAX(partition_timestamp) AS last_time
+        FROM
+          prod_buzzml.g_preprocessed_user_event_all_product
+        WHERE
+          partition_timestamp >= TIMESTAMP '{start_time}' - INTERVAL '28' DAY
+          AND partition_timestamp < TIMESTAMP '{end_time}'
+          AND event_type = 'view_detail'
+        GROUP BY
+          viewer_id
+      ) AS last_vd
+      ON
+        users.viewer_id = last_vd.viewer_id
+      LEFT JOIN(
+        SELECT
+          viewer_id, MAX(partition_timestamp) AS last_time
+        FROM
+          prod_buzzml.g_preprocessed_user_event_all_product
+        WHERE
+          partition_timestamp >= TIMESTAMP '{start_time}' - INTERVAL '28' DAY
+          AND partition_timestamp < TIMESTAMP '{end_time}'
+          AND event_type = 'add_to_cart'
+        GROUP BY
+          viewer_id
+      ) AS last_atc
+      ON
+        users.viewer_id = last_atc.viewer_id
+      LEFT JOIN(
+        SELECT
+          viewer_id, MAX(partition_timestamp) AS last_time
+        FROM
+          prod_buzzml.g_preprocessed_user_event_all_product
+        WHERE
+          partition_timestamp >= TIMESTAMP '{start_time}' - INTERVAL '28' DAY
+          AND partition_timestamp < TIMESTAMP '{end_time}'
+          AND event_type = 'purchase'
+        GROUP BY
+          viewer_id
+      ) AS last_p
+      ON
+        users.viewer_id = last_p.viewer_id
+    );
+
+  output_bucket: prod-buzzvil-data-lake
+  output_prefix: buzzml/gold/user_inactive_period/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzml_g_user_inactive_period
+  file_extension: parquet
+
+  database: prod_buzzml
+  table: g_user_inactive_period
+  location: s3://prod-buzzvil-data-lake/buzzml/gold/user_inactive_period
+
+  partition:
+    name: partition_timestamp
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+    location: s3://prod-buzzvil-data-lake/buzzml/gold/user_inactive_period/year={year}/month={month}/day={day}/hour={hour}
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      viewer_id                             VARCHAR(64),
+      commerce                              VARCHAR(16),
+      model                                 VARCHAR(16),
+      inactive_view_detail_day              SMALLINT,
+      inactive_add_to_cart_day              SMALLINT,
+      inactive_purchase_day                 SMALLINT
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    tblproperties("parquet.compress"="SNAPPY");

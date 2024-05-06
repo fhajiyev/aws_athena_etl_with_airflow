@@ -1,0 +1,103 @@
+# CREATE TABLE `performances` (
+#   `id` int(11) NOT NULL AUTO_INCREMENT,
+#   `uuid` char(32) NOT NULL,
+#   `local_date` varchar(25) NOT NULL,
+#   `unit_contract_uuid` char(32) NOT NULL,
+#   `unit_id` bigint(20) NOT NULL,
+#   `revenue_display` decimal(27,9) NOT NULL,
+#   `revenue_action` decimal(27,9) NOT NULL,
+#   `revenue_adnetwork` decimal(27,9) NOT NULL,
+#   `revenue_owner` decimal(27,9) NOT NULL,
+#   `revenue` decimal(27,9) NOT NULL,
+#   `cost_display` decimal(27,9) NOT NULL,
+#   `cost_action` decimal(27,9) NOT NULL,
+#   `cost_adnetwork` decimal(27,9) NOT NULL,
+#   `cost_owner` decimal(27,9) NOT NULL,
+#   `cost_base` decimal(27,9) NOT NULL,
+#   `cost_wel` decimal(27,9) NOT NULL,
+#   `cost_ref` decimal(27,9) NOT NULL,
+#   `cost` decimal(27,9) NOT NULL,
+#   `updated_at` datetime(6) NOT NULL,
+#   `created_at` datetime(6) NOT NULL,
+#   `unit_finance_id` int(11) NOT NULL,
+#   PRIMARY KEY (`id`),
+#   UNIQUE KEY `unit_finance_id` (`unit_finance_id`),
+#   UNIQUE KEY `unique_performance` (`local_date`,`unit_id`,`unit_contract_uuid`),
+#   KEY `performances_uuid_aa8c60ec` (`uuid`),
+#   KEY `performances_unit_contract_uuid_8f296f51` (`unit_contract_uuid`)
+# ) ENGINE=InnoDB AUTO_INCREMENT=263280 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+---
+pipeline_key: billingsvc_ls_performances
+pipeline_type: mysql_unload_s3
+pipeline_dag_configs:
+  start_date: 2020-09-16 17:00:00
+  schedule_interval: "0 17 * * *"
+mysql:
+  conn_id: billingsvc_mysql
+  table_name: performances
+  increment_key: id
+  increment_key_type: numeric
+  fields:
+  - id
+  - uuid
+  - local_date
+  - unit_contract_uuid
+  - unit_id
+  - revenue_display
+  - revenue_action
+  - revenue_adnetwork
+  - revenue_owner
+  - revenue
+  - cost_display
+  - cost_action
+  - cost_adnetwork
+  - cost_owner
+  - cost_base
+  - cost_wel
+  - cost_ref
+  - cost
+  - updated_at
+  - created_at
+  - unit_finance_id
+s3:
+  bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  prefix: billingsvc/landing_snapshot/performances/year={year}/month={month}/day={day}/hour={hour}
+  file_key: billingsvc_ls_performances
+  data_format: parquet
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id                   BIGINT,
+      uuid                 VARCHAR(64),
+      local_date           TIMESTAMP,
+      unit_contract_uuid   VARCHAR(64),
+      unit_id              BIGINT,
+      revenue_display      DECIMAL(27,9),
+      revenue_action       DECIMAL(27,9),
+      revenue_adnetwork    DECIMAL(27,9),
+      revenue_owner        DECIMAL(27,9),
+      revenue              DECIMAL(27,9),
+      cost_display         DECIMAL(27,9),
+      cost_action          DECIMAL(27,9),
+      cost_adnetwork       DECIMAL(27,9),
+      cost_owner           DECIMAL(27,9),
+      cost_base            DECIMAL(27,9),
+      cost_wel             DECIMAL(27,9),
+      cost_ref             DECIMAL(27,9),
+      cost                 DECIMAL(27,9),
+      updated_at           TIMESTAMP,
+      created_at           TIMESTAMP,
+      unit_finance_id      BIGINT
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY");
+  database: "{{ var.value.get('server_env', 'prod') }}_billingsvc"
+  table: ls_performances
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/billingsvc/landing_snapshot/performances"
+  partition:
+    key: partition_timestamp
+    value: "{{execution_date.strftime('%Y-%m-%d %H:00:00')}}"
+    subdir: "year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}"
+

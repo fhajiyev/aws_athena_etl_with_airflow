@@ -1,0 +1,34 @@
+---
+pipeline_key: bs_django_log
+pipeline_type: redshift_spectrum_add_partition
+pipeline_dag_configs:
+  start_date: 2019-03-19 00:00:00
+  schedule_interval: "@hourly"
+athena:
+  table_name: bs_django_log
+  fields:
+  - time
+  - process
+  - level
+  - msg
+  partition:
+    location: s3://buzzvil-log-oregon/prod/buzzscreen/buzzscreen-django
+    name: partition_timestamp
+    type: hourly
+
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE spectrum.bs_django_log ( 
+      time    VARCHAR(255),
+      process INT8,
+      level   VARCHAR(255),
+      msg     VARCHAR(65535)
+    )
+    PARTITIONED BY ( 
+        partition_timestamp TIMESTAMP
+    )
+    ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.RegexSerDe'
+    WITH SERDEPROPERTIES (
+      'input.regex' = '^(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2},\\d{3}) \\[([0-9]*)\\] \\[([a-zA-Z]*)\\] ([^*]*)$'
+    )
+    LOCATION
+      's3://buzzvil-log-oregon/prod/buzzscreen/buzzscreen-django/';

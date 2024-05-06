@@ -1,0 +1,153 @@
+# CREATE TABLE `unit_finance` (
+#   `id` int(11) NOT NULL AUTO_INCREMENT,
+#   `data_at` datetime(6) NOT NULL,
+#   `unit_id` bigint(20) NOT NULL,
+#   `country` varchar(50) DEFAULT NULL,
+#   `revenue_display_direct` decimal(27,9) NOT NULL,
+#   `revenue_display_owner` decimal(27,9) NOT NULL,
+#   `revenue_display_external` decimal(27,9) NOT NULL,
+#   `revenue_action_direct` decimal(27,9) NOT NULL,
+#   `revenue_action_owner` decimal(27,9) NOT NULL,
+#   `revenue_action_external` decimal(27,9) NOT NULL,
+#   `revenue_adnetwork_static` decimal(27,9) NOT NULL,
+#   `revenue_adnetwork_dynamic` decimal(27,9) NOT NULL,
+#   `cost_action_direct` bigint(20) NOT NULL,
+#   `cost_action_owner` bigint(20) NOT NULL,
+#   `cost_action_external` bigint(20) NOT NULL,
+#   `cost_adnetwork_static` bigint(20) NOT NULL,
+#   `cost_adnetwork_dynamic` bigint(20) NOT NULL,
+#   `cost_imp_direct` bigint(20) NOT NULL,
+#   `cost_imp_owner` bigint(20) NOT NULL,
+#   `cost_base` bigint(20) NOT NULL,
+#   `cost_wel` bigint(20) NOT NULL,
+#   `cost_bch` bigint(20) NOT NULL,
+#   `cost_ref` bigint(20) NOT NULL,
+#   `updated_at` datetime(6) NOT NULL,
+#   `created_at` datetime(6) NOT NULL,
+#   `cost_imp_external` bigint(20) NOT NULL,
+#   `job_uuid` char(32) DEFAULT NULL,
+#   `revenue_gross` decimal(27,9) NOT NULL,
+#   PRIMARY KEY (`id`),
+#   UNIQUE KEY `unique_unit_finance` (`data_at`,`unit_id`,`country`),
+#   KEY `unit_finance_job_uuid_27df6e8b` (`job_uuid`)
+# ) ENGINE=InnoDB AUTO_INCREMENT=11505180 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+# Note that we are taking full copy of unit_finance every day.
+---
+pipeline_key: statssvc_unit_finance
+pipeline_type: mysql_redshift
+incremental_sync: False  # Since there is only 1M records, we always retrieve all data from the data source
+
+pipeline_dag_configs:
+  start_date: 2020-12-02 16:00:00
+  schedule_interval: "0 16 * * *"
+
+mysql:
+  conn_id: statssvc_mysql
+  table_name: unit_finance
+  fields:
+  - id
+  - data_at
+  - unit_id
+  - country
+  - revenue_display_direct
+  - revenue_display_owner
+  - revenue_display_external
+  - revenue_action_direct
+  - revenue_action_owner
+  - revenue_action_external
+  - revenue_adnetwork_static
+  - revenue_adnetwork_dynamic
+  - cost_action_direct
+  - cost_action_owner
+  - cost_action_external
+  - cost_adnetwork_static
+  - cost_adnetwork_dynamic
+  - cost_imp_direct
+  - cost_imp_owner
+  - cost_base
+  - cost_wel
+  - cost_bch
+  - cost_ref
+  - updated_at
+  - created_at
+  - cost_imp_external
+  - job_uuid
+  - revenue_gross
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: statssvc_unit_finance
+  fields:
+  - id
+  - data_at
+  - unit_id
+  - country
+  - revenue_display_direct
+  - revenue_display_owner
+  - revenue_display_external
+  - revenue_action_direct
+  - revenue_action_owner
+  - revenue_action_external
+  - revenue_adnetwork_static
+  - revenue_adnetwork_dynamic
+  - cost_action_direct
+  - cost_action_owner
+  - cost_action_external
+  - cost_adnetwork_static
+  - cost_adnetwork_dynamic
+  - cost_imp_direct
+  - cost_imp_owner
+  - cost_base
+  - cost_wel
+  - cost_bch
+  - cost_ref
+  - updated_at
+  - created_at
+  - cost_imp_external
+  - job_uuid
+  - revenue_gross
+  copy_method: replace
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                          BIGINT          ENCODE AZ64,
+      data_at                     TIMESTAMP       ENCODE AZ64,
+      unit_id                     BIGINT          ENCODE AZ64,
+      country                     VARCHAR(255)    ENCODE ZSTD,
+      revenue_display_direct      DECIMAL(27,9)   ENCODE AZ64,
+      revenue_display_owner       DECIMAL(27,9)   ENCODE AZ64,
+      revenue_display_external    DECIMAL(27,9)   ENCODE AZ64,
+      revenue_action_direct       DECIMAL(27,9)   ENCODE AZ64,
+      revenue_action_owner        DECIMAL(27,9)   ENCODE AZ64,
+      revenue_action_external     DECIMAL(27,9)   ENCODE AZ64,
+      revenue_adnetwork_static    DECIMAL(27,9)   ENCODE AZ64,
+      revenue_adnetwork_dynamic   DECIMAL(27,9)   ENCODE AZ64,
+      cost_action_direct          BIGINT          ENCODE AZ64,
+      cost_action_owner           BIGINT          ENCODE AZ64,
+      cost_action_external        BIGINT          ENCODE AZ64,
+      cost_adnetwork_static       BIGINT          ENCODE AZ64,
+      cost_adnetwork_dynamic      BIGINT          ENCODE AZ64,
+      cost_imp_direct             BIGINT          ENCODE AZ64,
+      cost_imp_owner              BIGINT          ENCODE AZ64,
+      cost_base                   BIGINT          ENCODE AZ64,
+      cost_wel                    BIGINT          ENCODE AZ64,
+      cost_bch                    BIGINT          ENCODE AZ64,
+      cost_ref                    BIGINT          ENCODE AZ64,
+      updated_at                  TIMESTAMP       ENCODE AZ64,
+      created_at                  TIMESTAMP       ENCODE AZ64,
+      cost_imp_external           BIGINT          ENCODE AZ64,
+      job_uuid                    VARCHAR(64)     ENCODE ZSTD,
+      revenue_gross               DECIMAL(27,9)   ENCODE AZ64,
+      PRIMARY KEY(id)
+    )
+    DISTSTYLE AUTO
+    SORTKEY(data_at, unit_id)
+    ;
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id

@@ -1,0 +1,111 @@
+---
+pipeline_key: ba_client_publisher_request
+pipeline_type: athena_redshift_sync
+pipeline_dag_configs:
+  start_date: 2019-09-03 00:00:00
+  schedule_interval: "@hourly"
+athena:
+  table_name: ba_client_publisher_request
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE spectrum.ba_client_publisher_request (
+        viewer_id                VARCHAR(64),
+        unit_id                  INT8,
+        no_fill_count            INT4,
+        live_count               INT4,
+        ad_allocation_request    INT8,
+        ad_allocation_response   INT8,
+        ad_asset_fetch_start     INT8,
+        ad_asset_fetch_end       INT8,
+        ready_to_render          INT8,
+        publisher_user_id        VARCHAR(255),
+        created_at               TIMESTAMP
+    )
+    PARTITIONED BY (
+      partition_timestamp timestamp
+    )
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'ignore.malformed.json'='true'
+    )
+    LOCATION
+      's3://buzzvil-log-oregon/prod/buzzad/buzzad-client_publisher_request'
+    ;
+  partition:
+    location: s3://buzzvil-log-oregon/prod/buzzad/buzzad-client_publisher_request
+    name: partition_timestamp
+    type: hourly
+  process_query: |
+    WITH
+      timestamp_converted AS (
+        SELECT
+          viewer_id,
+          unit_id,
+          no_fill_count,
+          live_count,
+          FROM_UNIXTIME(NULLIF(ad_allocation_request/1000.0, 0)) as requested_at,
+          FROM_UNIXTIME(NULLIF(ad_allocation_response/1000.0, 0)) as ad_allocation_response,
+          FROM_UNIXTIME(NULLIF(ad_asset_fetch_start/1000.0, 0)) as ad_asset_fetch_start,
+          FROM_UNIXTIME(NULLIF(ad_asset_fetch_end/1000.0, 0)) as ad_asset_fetch_end,
+          FROM_UNIXTIME(NULLIF(ready_to_render/1000.0, 0)) as ready_to_render,
+          publisher_user_id
+        FROM
+          ba_client_publisher_request
+        WHERE
+          partition_timestamp >= TIMESTAMP'{start_time}' AND
+          partition_timestamp < TIMESTAMP'{end_time}'
+      )
+      SELECT
+        viewer_id,
+        unit_id,
+        no_fill_count,
+        live_count,
+        requested_at,
+        DATE_DIFF('millisecond', requested_at, ad_allocation_response) as ad_allocation_response,
+        DATE_DIFF('millisecond', requested_at, ad_asset_fetch_start) as ad_asset_fetch_start,
+        DATE_DIFF('millisecond', requested_at, ad_asset_fetch_end) as ad_asset_fetch_end,
+        DATE_DIFF('millisecond', requested_at, ready_to_render) as ready_to_render,
+        publisher_user_id
+      FROM
+        timestamp_converted
+
+  output_bucket: buzzvil-airflow
+  output_prefix: buzzad/client_publisher_request
+  file_key: ba_client_publisher_request
+
+redshift:
+  table_name: ba_client_publisher_request
+  fields:
+  - viewer_id
+  - unit_id
+  - no_fill_count
+  - live_count
+  - requested_at
+  - ad_allocation_response
+  - ad_asset_fetch_start
+  - ad_asset_fetch_end
+  - ready_to_render
+  - publisher_user_id
+  unique_key_list:
+  - viewer_id
+  - unit_id
+  - requested_at
+  increment_key: requested_at
+  increment_key_type: timestamp
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+        viewer_id               VARCHAR(64)     NOT NULL        ENCODE ZSTD,
+        unit_id                 INT8            NOT NULL        ENCODE ZSTD,
+        no_fill_count           INT4            NOT NULL        ENCODE ZSTD,
+        live_count              INT4            NOT NULL        ENCODE ZSTD,
+        requested_at            TIMESTAMP       NOT NULL        ENCODE ZSTD,
+        ad_allocation_response  INT4            DEFAULT NULL    ENCODE ZSTD,
+        ad_asset_fetch_start    INT4            DEFAULT NULL    ENCODE ZSTD,
+        ad_asset_fetch_end      INT4            DEFAULT NULL    ENCODE ZSTD,
+        ready_to_render         INT4            DEFAULT NULL    ENCODE ZSTD,
+        publisher_user_id       VARCHAR(255)    NOT NULL        ENCODE ZSTD
+    )
+    DISTKEY(viewer_id)
+    SORTKEY(requested_at, unit_id)

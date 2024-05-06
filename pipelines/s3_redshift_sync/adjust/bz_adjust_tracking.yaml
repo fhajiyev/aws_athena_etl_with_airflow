@@ -1,0 +1,233 @@
+---
+pipeline_key: bz_adjust_tracking
+pipeline_type: s3_redshift_sync
+pipeline_dag_configs:
+  start_date: 2019-06-21 06:15:00
+  schedule_interval: "15 * * * *"
+s3:
+  bucket: buzzvil-airflow
+  prefix: adjust-tracking
+redshift:
+  table_name: bz_adjust_tracking
+  fields:
+  - app_id
+  - ifa
+  - adjust_app_id
+  - app_name
+  - app_name_dashboard
+  - app_version
+  - app_version_raw
+  - app_version_short
+  - store
+  - tracker
+  - tracker_name
+  - first_tracker
+  - first_tracker_name
+  - last_tracker
+  - last_tracker_name
+  - outdated_tracker
+  - network_name
+  - campaign_name
+  - adgroup_name
+  - creative_name
+  - impression_based
+  - is_organic
+  - is_s2s
+  - is_s2s_engagement_based
+  - rejection_reason
+  - click_referer
+  - activity_kind
+  - click_time
+  - impression_time
+  - conversion_duration
+  - engagement_time
+  - installed_at
+  - install_finish_time
+  - install_begin_time
+  - referral_time
+  - created_at
+  - reattributed_at
+  - attribution_updated_at
+  - time_to_uninstall
+  - time_to_reinstall
+  - uninstalled_at
+  - reinstalled_at
+  - last_session_time
+  - connection_type
+  - cpu_type
+  - hardware_name
+  - network_type
+  - device_manufacturer
+  - proxy_ip_address
+  - click_attribution_window
+  - impression_attribution_window
+  - reattribution_attribution_window
+  - inactive_user_definition
+  - fingerprint_attribution_window
+  - match_type
+  - reftag
+  - referrer
+  - user_agent
+  - mcc
+  - mnc
+  - ip_address
+  - isp
+  - region
+  - country
+  - country_subdivision
+  - city
+  - postal_code
+  - language
+  - device_name
+  - device_type
+  - os_name
+  - api_level
+  - sdk_version
+  - os_version
+  - random
+  - nonce
+  - random_user_id
+  - environment
+  - tracking_enabled
+  - tracking_limited
+  - timezone
+  - event
+  - event_name
+  - last_time_spent
+  - time_spent
+  - session_count
+  - lifetime_session_count
+  - is_reattributed
+  - deeplink
+  - partner_parameters
+  - revenue_float
+  - revenue
+  - currency
+  - revenue_usd
+  - revenue_usd_cents
+  - reporting_revenue
+  - reporting_currency
+  - cost_type
+  - cost_amount
+  - cost_currency
+  - reporting_cost
+  - cost_id_md5
+  - push_token
+  unique_key_list:
+  - app_id
+  - ifa
+  - created_at
+  increment_key: created_at
+  increment_key_type: timestamp
+  copy_method: upsert
+  copy_option: adjust_csv
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+        app_id                              INT8            DEFAULT NULL   ENCODE ZSTD,
+        ifa                                 VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+        adjust_app_id                       VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        app_name                            VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        app_name_dashboard                  VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        app_version                         VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        app_version_raw                     VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        app_version_short                   VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        store                               VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        tracker                             VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        tracker_name                        VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        first_tracker                       VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        first_tracker_name                  VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        last_tracker                        VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        last_tracker_name                   VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        outdated_tracker                    VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        network_name                        VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        campaign_name                       VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        adgroup_name                        VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        creative_name                       VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        impression_based                    VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        is_organic                          INT2            DEFAULT NULL   ENCODE ZSTD,
+        is_s2s                              INT2            DEFAULT NULL   ENCODE ZSTD,
+        is_s2s_engagement_based             INT2            DEFAULT NULL   ENCODE ZSTD,
+        rejection_reason                    VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        click_referer                       VARCHAR(1024)   DEFAULT NULL   ENCODE ZSTD,
+        activity_kind                       VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        click_time                          TIMESTAMP       DEFAULT NULL   ENCODE ZSTD,
+        impression_time                     TIMESTAMP       DEFAULT NULL   ENCODE ZSTD,
+        conversion_duration                 TIMESTAMP       DEFAULT NULL   ENCODE ZSTD,
+        engagement_time                     TIMESTAMP       DEFAULT NULL   ENCODE ZSTD,
+        installed_at                        TIMESTAMP       DEFAULT NULL   ENCODE ZSTD,
+        install_finish_time                 TIMESTAMP       DEFAULT NULL   ENCODE ZSTD,
+        install_begin_time                  TIMESTAMP       DEFAULT NULL   ENCODE ZSTD,
+        referral_time                       TIMESTAMP       DEFAULT NULL   ENCODE ZSTD,
+        created_at                          TIMESTAMP       DEFAULT NULL   ENCODE ZSTD,
+        reattributed_at                     TIMESTAMP       DEFAULT NULL   ENCODE ZSTD,
+        attribution_updated_at              TIMESTAMP       DEFAULT NULL   ENCODE ZSTD,
+        time_to_uninstall                   TIMESTAMP       DEFAULT NULL   ENCODE ZSTD,
+        time_to_reinstall                   TIMESTAMP       DEFAULT NULL   ENCODE ZSTD,
+        uninstalled_at                      INT8            DEFAULT NULL   ENCODE ZSTD,
+        reinstalled_at                      TIMESTAMP       DEFAULT NULL   ENCODE ZSTD,
+        last_session_time                   TIMESTAMP       DEFAULT NULL   ENCODE ZSTD,
+        connection_type                     VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        cpu_type                            VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        hardware_name                       VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        network_type                        VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        device_manufacturer                 VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        proxy_ip_address                    VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        click_attribution_window            INT4            DEFAULT NULL   ENCODE ZSTD,
+        impression_attribution_window       INT4            DEFAULT NULL   ENCODE ZSTD,
+        reattribution_attribution_window    INT4            DEFAULT NULL   ENCODE ZSTD,
+        inactive_user_definition            INT4            DEFAULT NULL   ENCODE ZSTD,
+        fingerprint_attribution_window      INT4            DEFAULT NULL   ENCODE ZSTD,
+        match_type                          VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        reftag                              VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        referrer                            VARCHAR(1024)    DEFAULT NULL   ENCODE ZSTD,
+        user_agent                          VARCHAR(1024)   DEFAULT NULL   ENCODE ZSTD,
+        mcc                                 VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+        mnc                                 VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+        ip_address                          VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+        isp                                 VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        region                              VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        country                             VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        country_subdivision                 VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        city                                VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        postal_code                         VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+        language                            VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+        device_name                         VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        device_type                         VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        os_name                             VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+        api_level                           VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+        sdk_version                         VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+        os_version                          VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+        random                              VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+        nonce                               VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+        random_user_id                      VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+        environment                         VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+        tracking_enabled                    BOOLEAN         DEFAULT NULL   ENCODE ZSTD,
+        tracking_limited                    BOOLEAN         DEFAULT NULL   ENCODE ZSTD,
+        timezone                            VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+        event                               VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+        event_name                          VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        last_time_spent                     INT4            DEFAULT NULL   ENCODE ZSTD,
+        time_spent                          INT4            DEFAULT NULL   ENCODE ZSTD,
+        session_count                       INT4            DEFAULT NULL   ENCODE ZSTD,
+        lifetime_session_count              INT4            DEFAULT NULL   ENCODE ZSTD,
+        is_reattributed                     BOOLEAN         DEFAULT NULL   ENCODE ZSTD,
+        deeplink                            VARCHAR(1024)   DEFAULT NULL   ENCODE LZO,
+        partner_parameters                  VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        revenue_float                       DECIMAL(18,9)   DEFAULT NULL   ENCODE ZSTD,
+        revenue                             DECIMAL(18,9)   DEFAULT NULL   ENCODE ZSTD,
+        currency                            VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+        revenue_usd                         DECIMAL(18,9)   DEFAULT NULL   ENCODE ZSTD,
+        revenue_usd_cents                   DECIMAL(18,9)   DEFAULT NULL   ENCODE ZSTD,
+        reporting_revenue                   DECIMAL(18,9)   DEFAULT NULL   ENCODE ZSTD,
+        reporting_currency                  VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+        cost_type                           VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+        cost_amount                         DECIMAL(18,9)   DEFAULT NULL   ENCODE ZSTD,
+        cost_currency                       VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+        reporting_cost                      DECIMAL(18,9)   DEFAULT NULL   ENCODE ZSTD,
+        cost_id_md5                         VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+        push_token                          VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD
+    )
+    DISTKEY(ifa)
+    SORTKEY(created_at)
+    ;

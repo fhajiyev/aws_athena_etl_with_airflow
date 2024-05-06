@@ -1,0 +1,36 @@
+---
+pipeline_key: ba_video_event
+pipeline_type: redshift_spectrum_add_partition
+pipeline_dag_configs:
+  start_date: 2020-03-01 00:00:00
+  schedule_interval: "@hourly"
+
+athena:
+  table_name: ba_video_event
+  fields:
+    - lineitem_id
+    - unit_id
+    - event
+    - created_at
+  partition:
+    location: s3://prod-buzzvil-firehose/buzzad/video_event_log
+    name: partition_timestamp
+    type: hourly
+
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE spectrum.ba_video_event (
+        lineitem_id        INT8,
+        unit_id            INT8,
+        event              VARCHAR(64),
+        created_at               VARCHAR(64)
+    )
+    PARTITIONED BY (
+        partition_timestamp TIMESTAMP
+    )
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'ignore.malformed.json'='true'
+    )
+    LOCATION
+      's3://prod-buzzvil-firehose/buzzad/video_event_log/';

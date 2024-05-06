@@ -1,0 +1,122 @@
+---
+pipeline_key: bs_rolling_session
+pipeline_type: athena_redshift_sync
+pipeline_dag_configs:
+  start_date: 2019-01-01 00:00:00
+  schedule_interval: "@hourly"
+athena:
+  table_name: bi_event
+  partition:
+    location: s3://prod-buzzvil-firehose/buzzinsight/event/
+    name: partition_timestamp
+    type: hourly
+  process_query: |
+    SELECT
+      app_id,
+      version,
+      user_id,
+      sub_user_id,
+      unit_id,
+      ifa,
+      JSON_EXTRACT_SCALAR(attributes, '$.report_ratio') AS report_ratio,
+      COALESCE(JSON_EXTRACT_SCALAR(attributes, '$.session_id'), CAST(0 AS VARCHAR)) AS session_id,
+      COALESCE(JSON_EXTRACT_SCALAR(attributes, '$.duration'), CAST(0 AS VARCHAR)) AS duration,
+      COALESCE(JSON_EXTRACT_SCALAR(attributes, '$.ad_count'), CAST(0 AS VARCHAR)) AS ad_count,
+      COALESCE(JSON_EXTRACT_SCALAR(attributes, '$.content_count'), CAST(0 AS VARCHAR)) AS content_count,
+      CARDINALITY(FILTER(MAP_KEYS(CAST(JSON_PARSE(attributes) AS MAP<VARCHAR, VARCHAR>)), x -> x like 'exposure_%')) AS watched_count,
+      COALESCE(ARRAY_MAX(CAST(TRANSFORM(FILTER(MAP_KEYS(CAST(JSON_PARSE(attributes) AS MAP<VARCHAR, VARCHAR>)), x -> x like 'exposure_%'), x -> SUBSTR(x, 10)) AS ARRAY<INTEGER>)) - CARDINALITY(FILTER(MAP_KEYS(CAST(JSON_PARSE(attributes) AS MAP<VARCHAR, VARCHAR>)), x -> x like 'exposure_%')) + 1, 0) AS skipped_count,
+      COALESCE(ARRAY_MAX(CAST(TRANSFORM(FILTER(MAP_KEYS(CAST(JSON_PARSE(attributes) AS MAP<VARCHAR, VARCHAR>)), x -> x like 'exposure_%'), x -> SUBSTR(x, 10)) AS ARRAY<INTEGER>)) + 1, 0) AS last_watched_card,
+      TRANSFORM(FILTER(MAP_KEYS(CAST(JSON_PARSE(attributes) AS MAP<VARCHAR, VARCHAR>)), x -> x like 'exposure_%'), x -> SUBSTR(x, 10)) AS watched_cards_list,
+      created_at
+    FROM
+      bi_event
+    WHERE
+      partition_timestamp >= TIMESTAMP'{start_time}' AND
+      partition_timestamp < TIMESTAMP'{end_time}' AND
+      type = 'dcp' AND
+      name = 'rolling_session' AND
+      TRY(CAST(JSON_PARSE(attributes) AS MAP<VARCHAR(1024), VARCHAR(1024)>)) IS NOT NULL
+  output_bucket: buzzvil-athena
+  output_prefix: prod/buzzscreen/rolling_session
+  file_key: bs_rolling_session
+
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE spectrum.bi_event (
+      app_id             INT8,
+      unit_id            INT8,
+      type               VARCHAR(255),
+      name               VARCHAR(255),
+      created_at         VARCHAR(255),
+      version            INT4,
+      user_id            VARCHAR(255),
+      sub_user_id        VARCHAR(255),
+      guid               VARCHAR(255),
+      ifa                VARCHAR(255),
+      sex                VARCHAR(255),
+      year_of_birth      INT4,
+      carrier            VARCHAR(255),
+      device_name        VARCHAR(255),
+      device_os          VARCHAR(255),
+      device_resolution  VARCHAR(255),
+      ip                 VARCHAR(255),
+      ip_country         VARCHAR(255),
+      attributes         VARCHAR(65535)
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1'
+    ) LOCATION 's3://prod-buzzvil-firehose/buzzinsight/event/';
+redshift:
+  table_name: bs_rolling_session
+  fields:
+  - app_id
+  - version
+  - user_id
+  - sub_user_id
+  - unit_id
+  - ifa
+  - report_ratio
+  - session_id
+  - duration
+  - ad_count
+  - content_count
+  - watched_count
+  - skipped_count
+  - last_watched_card
+  - watched_card_list
+  - created_at
+  unique_key_list:
+  - created_at
+  - unit_id
+  - ifa
+  deduplicate_key_list:
+  - created_at
+  - unit_id
+  - ifa
+  increment_key: created_at
+  increment_key_type: timestamp
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      app_id              INT8           NOT NULL       ENCODE ZSTD,
+      version             INT4           NOT NULL       ENCODE ZSTD,
+      user_id             VARCHAR(255)   NULL           ENCODE ZSTD,
+      sub_user_id         VARCHAR(255)   NULL           ENCODE ZSTD,
+      unit_id             INT8           NULL           ENCODE ZSTD,
+      ifa                 VARCHAR(64)    NULL           ENCODE ZSTD,
+      report_ratio        DECIMAL(4,2)   DEFAULT NULL   ENCODE ZSTD,
+      session_id          VARCHAR(64)    NOT NULL       ENCODE ZSTD,
+      duration            INT8           NULL           ENCODE ZSTD,
+      ad_count            INT2           NOT NULL       ENCODE ZSTD,
+      content_count       INT2           NOT NULL       ENCODE ZSTD,
+      watched_count       INT2           NOT NULL       ENCODE ZSTD,
+      skipped_count       INT2           NOT NULL       ENCODE ZSTD,
+      last_watched_card   INT2           NOT NULL       ENCODE ZSTD,
+      watched_card_list   VARCHAR(1024)  NOT NULL       ENCODE ZSTD,
+      created_at          TIMESTAMP      NOT NULL       ENCODE ZSTD
+    )
+    DISTKEY(ifa)
+    SORTKEY(created_at, user_id)
+    ;

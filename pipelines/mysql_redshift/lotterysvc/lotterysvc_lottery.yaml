@@ -1,0 +1,44 @@
+---
+pipeline_key: lotterysvc_lottery
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: lotterysvc_mysql
+  table_name: lottery
+  fields:
+  - id
+  - app_id
+  - lottery_key
+  - starts_at
+  - winning_numbers
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: lotterysvc_lottery
+  fields:
+  - id
+  - app_id
+  - lottery_key
+  - starts_at
+  - winning_numbers
+  copy_method: incremental
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name} (
+      id                 INT8           NOT NULL       ENCODE AZ64,
+      app_id             INT8           NOT NULL       ENCODE AZ64,
+      lottery_key        VARCHAR(255)   DEFAULT NULL   ENCODE ZSTD,
+      starts_at          TIMESTAMP      NOT NULL       ENCODE ZSTD,
+      winning_numbers    VARCHAR(255)   DEFAULT NULL   ENCODE ZSTD,
+      PRIMARY KEY (id)
+    )
+    DISTSTYLE ALL
+    SORTKEY(id)
+    ;
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id

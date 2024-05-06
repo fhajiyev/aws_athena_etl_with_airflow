@@ -1,0 +1,36 @@
+---
+pipeline_key: ba_alloc_by_type
+pipeline_type: redshift_spectrum_add_partition
+pipeline_dag_configs:
+  start_date: 2019-05-01 00:00:00
+  schedule_interval: "@hourly"
+
+athena:
+  table_name: ba_alloc_by_type
+  fields:
+  - time
+  - unit_id
+  - direct_sales_item_count
+  - adn_item_count
+  - sdk_item_count
+  partition:
+    location: s3://buzzvil-log-oregon/prod/buzzad/buzzad-general-direct_sales_and_adn
+    name: partition_timestamp
+    type: hourly
+
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE spectrum.ba_alloc_by_type (
+      time                         VARCHAR(255),
+      unit_id                      INT8,
+      direct_sales_item_count      INT4,
+      adn_item_count               INT4,
+      sdk_item_count               INT4
+    )
+    PARTITIONED BY (
+        partition_timestamp TIMESTAMP
+    )
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1'
+    )
+    LOCATION 's3://buzzvil-log-oregon/prod/buzzad/buzzad-general-direct_sales_and_adn/';

@@ -1,0 +1,113 @@
+---
+    pipeline_key: ba_daily_click
+    pipeline_type: athena_redshift_sync
+    pipeline_dag_configs:
+      start_date: 2019-01-01 16:00:00
+      schedule_interval: "0 16 * * *"
+    athena:
+      table_name: ba_click
+      create_table_syntax: |
+        CREATE EXTERNAL TABLE spectrum.ba_click (
+          viewer_id          VARCHAR(64),
+          unit_id            INT8,
+          lineitem_id        INT8,
+          time               TIMESTAMP,
+          sales              FLOAT,
+          year_of_birth      INT4,
+          sex                VARCHAR(3),
+          ip                 INT8,
+          carrier            VARCHAR(128),
+          region             VARCHAR(128),
+          platform           VARCHAR(1),
+          country            VARCHAR(2),
+          device_name        VARCHAR(20),
+          publisher_user_id  VARCHAR(256),
+          relationship       VARCHAR(1),
+          ifa                VARCHAR(64),
+          udid               VARCHAR(64),
+          adid               VARCHAR(64),
+          creative_id        INT8,
+          user_agent         VARCHAR(256),
+          adnetwork_id       INT8,
+          registered_days    INT4
+        )
+        PARTITIONED BY (
+          partition_timestamp timestamp
+        )
+        ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+        WITH SERDEPROPERTIES (
+          'serialization.format' = '1',
+          'ignore.malformed.json' = 'true'
+        )
+        LOCATION 's3://prod-buzzvil-firehose/buzzad/click/'
+        ;
+      partition:
+        location: s3://prod-buzzvil-firehose/buzzad/click
+        name: partition_timestamp
+        type: hourly
+      process_query: |
+        SELECT
+          DATE_TRUNC('day', partition_timestamp + interval '9' HOUR) AS date_at,
+          unit_id,
+          lineitem_id,
+          CASE
+            WHEN c.year_of_birth < 1900 THEN NULL
+            WHEN c.year_of_birth > YEAR(TIMESTAMP'{start_time}') THEN NULL
+            ELSE c.year_of_birth
+          END AS year_of_birth,
+          CASE
+            WHEN c.sex IN ('m','M') THEN 'M'
+            WHEN c.sex IN ('f','F','W') THEN 'F'
+            ELSE NULL
+          END AS sex,
+          platform,
+          country,
+          COUNT(*) AS click_count
+        FROM
+          prod_spectrum.ba_click c
+        WHERE
+          partition_timestamp >= TIMESTAMP'{start_time}' - INTERVAL '1' HOUR AND
+          partition_timestamp < TIMESTAMP'{end_time}' - INTERVAL '1' HOUR
+        GROUP BY
+          1,2,3,4,5,6,7
+        ORDER BY
+          1,2
+      output_bucket: prod-buzzvil-data-lake
+      output_prefix: buzzad/gold/daily_click
+      file_key: g_buzzad_daily_click
+
+    redshift:
+      table_name: g_buzzad_daily_click
+      fields:
+      - date_at
+      - unit_id
+      - lineitem_id
+      - year_of_birth
+      - sex
+      - platform
+      - country
+      - click_count
+      unique_key_list:
+      - date_at
+      - unit_id
+      - year_of_birth
+      - sex
+      - platform
+      - country
+      increment_key: date_at
+      increment_key_type: timestamp
+      copy_method: upsert
+      create_table_syntax: |
+        CREATE TABLE IF NOT EXISTS {table_name}
+        (
+            date_at           TIMESTAMP   NOT NULL  ENCODE AZ64,
+            unit_id           BIGINT      NOT NULL  ENCODE AZ64,
+            lineitem_id       BIGINT      NOT NULL  ENCODE AZ64,
+            year_of_birth     SMALLINT        NULL  ENCODE AZ64,
+            sex               CHAR(1)         NULL  ENCODE ZSTD,
+            platform          CHAR(1)     NOT NULL  ENCODE ZSTD,
+            country           VARCHAR(4)      NULL  ENCODE ZSTD,
+            click_count       BIGINT      NOT NULL  ENCODE AZ64
+        )
+        DISTKEY(date_at)
+        SORTKEY(date_at, unit_id)

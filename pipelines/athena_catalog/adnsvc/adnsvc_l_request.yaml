@@ -1,0 +1,29 @@
+---
+pipeline_key: adnsvc_l_request
+pipeline_type: athena_catalog
+pipeline_dag_configs:
+  start_date: 2020-08-01 00:00:00
+  schedule_interval: "0 * * * *"
+downstream_dependencies:
+  - dag_id: athena_process_adnsvc_g_request
+    task_id: generate_uuid
+athena:
+  database: "{{ var.value.get('server_env', 'prod') }}_adnsvc"
+  table: l_request
+  location: s3://prod-buzzvil-data-lake/eks/namespace_name=adnsvc/type=adn_request
+  partition:
+    name: partition_timestamp
+    location: s3://prod-buzzvil-data-lake/eks/namespace_name=adnsvc/type=adn_request/year={year}/month={month}/day={day}/hour={hour}
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+        payload             MAP<STRING, STRING>,
+        log_at              TIMESTAMP
+    )
+    PARTITIONED BY (partition_timestamp TIMESTAMP)
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'ignore.malformed.json'='true'
+    )
+    LOCATION '{location}';

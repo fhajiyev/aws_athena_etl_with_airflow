@@ -1,0 +1,197 @@
+---
+pipeline_key: segmentsvc_g_performance
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-12-01 00:00:00
+  schedule_interval: "0 * * * *"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: dev-emergency-mugshot
+    - trigger: failure
+      args:
+        channel: dev-emergency-mugshot
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: athena_process_ba_g_impression
+    timedelta_hours: 0
+  - dag_id: athena_process_ba_g_click
+    timedelta_hours: 0
+  - dag_id: mysql_s3_athena_ba_l_conversion
+    timedelta_hours: 0
+  - dag_id: athena_process_profilesvc_g_uid
+    timedelta_hours: 0
+  - dag_id: mysql_unload_s3_segmentsvc_ls_segment
+    timedelta_hours: 0
+
+
+athena:
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+      format = 'PARQUET',
+      parquet_compression = 'SNAPPY',
+      external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+    SELECT
+      data_at,
+      lineitem_id,
+      segment_id,
+      SUM(impression_count) AS impression_count,
+      SUM(click_count) AS click_count,
+      SUM(conversion_count) AS conversion_count,
+      SUM(revenue) AS revenue,
+      SUM(impression_user_count) AS impression_user_count,
+      SUM(click_user_count) AS click_user_count,
+      SUM(conversion_user_count) AS conversion_user_count
+    FROM
+      (
+        SELECT
+          TIMESTAMP'{start_time}' AS data_at,
+          i.lineitem_id,
+          s.segment_id,
+          COUNT(*) AS impression_count,
+          0 AS click_count,
+          0 AS conversion_count,
+          SUM(i.sales) AS revenue,
+          COUNT(DISTINCT i.viewer_id) AS impression_user_count,
+          0 AS click_user_count,
+          0 AS conversion_user_count
+        FROM
+          prod_buzzad.g_impression i
+        LEFT JOIN
+          prod_profilesvc.g_uid_view u 
+            ON u.field = UPPER(SPLIT_PART(i.viewer_id, ':', 1))
+            AND u.value = SPLIT_PART(i.viewer_id, ':', 2)
+        LEFT JOIN
+          (
+            SELECT DISTINCT
+              profile_id,
+              segment_id
+            FROM
+              prod_segmentsvc.g_segment_snapshot s
+            WHERE
+              s.evaluated_at >= TIMESTAMP'{start_time}' - INTERVAL '2' hour AND
+              s.evaluated_at < TIMESTAMP'{end_time}'
+          ) s
+            ON s.profile_id = u.profile_id
+        WHERE
+          i.partition_timestamp >= TIMESTAMP'{start_time}' AND
+          i.partition_timestamp < TIMESTAMP'{end_time}'
+        GROUP BY
+          1, 2, 3
+
+        UNION ALL
+
+        SELECT
+          TIMESTAMP'{start_time}' AS data_at,
+          c.lineitem_id,
+          s.segment_id,
+          0 AS impression_count,
+          COUNT(*) AS click_count,
+          0 AS conversion_count,
+          SUM(c.sales) AS revenue,
+          0 AS impression_user_count,
+          COUNT(DISTINCT c.viewer_id) AS click_user_count,
+          0 AS conversion_user_count
+        FROM
+          prod_buzzad.g_click c
+        LEFT JOIN
+          prod_profilesvc.g_uid_view u 
+            ON u.field = UPPER(SPLIT_PART(c.viewer_id, ':', 1))
+            AND u.value = SPLIT_PART(c.viewer_id, ':', 2)
+        LEFT JOIN
+          (
+            SELECT DISTINCT
+              profile_id,
+              segment_id
+            FROM
+              prod_segmentsvc.g_segment_snapshot s
+            WHERE
+              s.evaluated_at >= TIMESTAMP'{start_time}' - INTERVAL '2' hour AND 
+              s.evaluated_at < TIMESTAMP'{end_time}'
+          ) s
+            ON s.profile_id = u.profile_id
+        WHERE
+          c.partition_timestamp >= TIMESTAMP'{start_time}' AND
+          c.partition_timestamp < TIMESTAMP'{end_time}'
+        GROUP BY
+          1, 2, 3
+
+        UNION ALL
+
+        SELECT
+          TIMESTAMP'{start_time}' AS data_at,
+          c.lineitem_id,
+          s.segment_id,
+          0 AS impression_count,
+          0 AS click_count,
+          COUNT(*) AS conversion_count,
+          SUM(c.sales) AS revenue,
+          0 AS impression_user_count,
+          0 AS click_user_count,
+          COUNT(DISTINCT c.viewer_id) AS conversion_user_count
+        FROM
+          prod_buzzad.l_conversion c
+        LEFT JOIN
+          prod_profilesvc.g_uid_view u 
+            ON u.field = UPPER(SPLIT_PART(c.viewer_id, ':', 1))
+            AND u.value = SPLIT_PART(c.viewer_id, ':', 2)
+        LEFT JOIN
+          (
+            SELECT DISTINCT
+              profile_id,
+              segment_id
+            FROM
+              prod_segmentsvc.g_segment_snapshot s
+            WHERE
+              s.evaluated_at >= TIMESTAMP'{start_time}' - INTERVAL '2' hour AND 
+              s.evaluated_at < TIMESTAMP'{end_time}'
+          ) s
+            ON s.profile_id = u.profile_id
+        WHERE
+          c.partition_timestamp >= TIMESTAMP'{start_time}' AND
+          c.partition_timestamp < TIMESTAMP'{end_time}'
+        GROUP BY
+          1, 2, 3
+      )
+    GROUP BY
+      1, 2, 3
+    );
+  output_bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  output_prefix: "segmentsvc/gold/performance/year={year}/month={month}/day={day}/hour={hour}"
+  file_key: performance
+  file_extension: parquet
+
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      `data_at`                 TIMESTAMP,
+      `lineitem_id`             BIGINT,
+      `segment_id`              BIGINT,
+      `impression_count`        BIGINT,
+      `click_count`             BIGINT,
+      `conversion_count`        BIGINT,
+      `revenue`                 FLOAT,
+      `impression_user_count`   BIGINT,
+      `click_user_count`        BIGINT,
+      `conversion_user_count`   BIGINT
+    )
+    PARTITIONED BY (
+      partition_timestamp TIMESTAMP
+    )
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY")
+    ;
+  database: "{{ var.value.get('server_env', 'prod') }}_segmentsvc"
+  table: g_performance
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/segmentsvc/gold/performance/"
+  partition:
+    name: partition_timestamp
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+    location: "s3://{{{{ var.value.get('server_env', 'prod') }}}}-buzzvil-data-lake/segmentsvc/gold/performance/year={year}/month={month}/day={day}/hour={hour}"

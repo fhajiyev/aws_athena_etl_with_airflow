@@ -1,0 +1,59 @@
+---
+pipeline_key: bs_click
+pipeline_type: redshift_spectrum_add_partition
+pipeline_dag_configs:
+  start_date: 2019-07-01 00:00:00
+  schedule_interval: "@hourly"
+athena:
+  table_name: bs_click
+  fields:
+  - campaign_id
+  - country
+  - device_id
+  - ifa
+  - ip
+  - level
+  - message
+  - model_artifact
+  - msg
+  - position
+  - session_id
+  - sex
+  - time
+  - unit_device_token
+  - unit_id
+  - year_of_birth
+  partition:
+    location: s3://prod-buzzvil-firehose/buzzscreen/click
+    name: partition_timestamp
+    type: hourly
+
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE spectrum.bs_click (
+        campaign_id           INT8,
+        country               VARCHAR(63),
+        device_id             INT8,
+        ifa                   VARCHAR(45),
+        ip                    INT8,
+        level                 VARCHAR(31),
+        message               VARCHAR(31),
+        model_artifact        VARCHAR(63),
+        msg                   VARCHAR(31),
+        position              VARCHAR(15),
+        session_id            VARCHAR(45),
+        sex                   VARCHAR(15),
+        time                  VARCHAR(45),
+        unit_device_token     VARCHAR(45),
+        unit_id               INT8,
+        year_of_birth         INT4
+    )
+    PARTITIONED BY (
+      partition_timestamp timestamp
+    )
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'ignore.malformed.json' = 'true'
+    )
+    LOCATION
+      's3://prod-buzzvil-firehose/buzzscreen/click/';

@@ -1,0 +1,54 @@
+---
+pipeline_key: ba_postback_error
+pipeline_type: s3_redshift_sync
+pipeline_dag_configs:
+  start_date: 2019-07-01 00:00:00
+  schedule_interval: "@hourly"
+delay_seconds: 600
+
+s3:
+  bucket: buzzvil-log-oregon
+  prefix: prod/postbacksvc/error/ba_postback
+redshift:
+  table_name: ba_postback_error
+  fields:
+  - postback_url
+  - postback_method
+  - unit_id
+  - click_id
+  - params
+  - postback_headers
+  - postback_config
+  - status_code
+  - response_body
+  - exception
+  - created_at
+  unique_key_list:
+  - created_at
+  - click_id
+  deduplicate_key_list:
+  - created_at
+  - click_id
+  increment_key: created_at
+  increment_key_type: timestamp
+  copy_method: upsert
+  copy_option: jsonpath
+  jsonpath_location: 's3://buzzvil-log-oregon/prod/buzzad/postback_error/jsonpaths/postback-error-0001.jsonpaths'
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      postback_url       VARCHAR(512)    NULL       ENCODE LZO,
+      postback_method    VARCHAR(10)     NULL       ENCODE LZO,
+      unit_id            INT8            NOT NULL   ENCODE ZSTD,
+      click_id           VARCHAR(64)     NOT NULL   ENCODE ZSTD,
+      params             VARCHAR(1024)   NULL       ENCODE LZO,
+      postback_headers   VARCHAR(1024)   NULL       ENCODE LZO,
+      postback_config    VARCHAR(1024)   NULL       ENCODE LZO,
+      status_code        VARCHAR(1024)   NULL       ENCODE LZO,
+      response_body      VARCHAR(1024)   NULL       ENCODE LZO,
+      exception          VARCHAR(1024)   NULL       ENCODE LZO,
+      created_at         TIMESTAMP       NOT NULL   ENCODE ZSTD
+    )
+    DISTSTYLE ALL
+    SORTKEY (created_at)
+    ;

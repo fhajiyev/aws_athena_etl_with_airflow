@@ -1,0 +1,73 @@
+#  CREATE TABLE `welcome_rewards` (
+#    `id` int(11) NOT NULL AUTO_INCREMENT,
+#    `device_id` bigint(20) NOT NULL,
+#    `unit_id` bigint(20) NOT NULL,
+#    `unit_device_token` varchar(255) NOT NULL,
+#    `amount` int(10) unsigned NOT NULL,
+#    `status` smallint(5) unsigned NOT NULL,
+#    `created_at` datetime(6) NOT NULL,
+#    `updated_at` datetime(6) NOT NULL,
+#    `version` bigint(20),
+#    `config_id` bigint(20) NOT NULL,
+#    PRIMARY KEY (`id`),
+#    UNIQUE KEY `welcome_rewards_device_id_b0bcf9b6_uniq` (`device_id`,`unit_id`),
+#    KEY `welcome_rewards_fde81f11` (`created_at`),
+#    KEY `welcome_rewards_status_36f2ab63_uniq` (`status`),
+#    KEY `welcome_rewards_config_id_cc271a3d_idx` (`config_id`,`status`,`created_at`)
+#  ) ENGINE=InnoDB AUTO_INCREMENT=1141876 DEFAULT CHARSET=utf8;
+
+---
+pipeline_key: buzzscreen_ls_welcome_rewards
+pipeline_type: mysql_unload_s3
+pipeline_dag_configs:
+  start_date: 2020-11-02 08:00:00
+  schedule_interval: "0 17 * * *"
+mysql:
+  conn_id: buzzscreen_mysql
+  table_name: welcome_rewards
+  fields:
+  - id
+  - device_id
+  - unit_id
+  - unit_device_token
+  - amount
+  - status
+  - created_at
+  - updated_at
+  - version
+  - config_id
+  increment_key: id
+  increment_key_type: numeric
+
+s3:
+  bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  prefix: buzzscreen/landing_snapshot/welcome_rewards/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzscreen_ls_welcome_rewards
+  data_format: parquet
+
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id                  BIGINT,
+      device_id           BIGINT,
+      unit_id             BIGINT,
+      unit_device_token   VARCHAR(765),
+      amount              BIGINT,
+      status              TINYINT,
+      created_at          TIMESTAMP,
+      updated_at          TIMESTAMP,
+      version             BIGINT,
+      config_id           BIGINT
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY");
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzscreen"
+  table: ls_welcome_rewards
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/buzzscreen/landing_snapshot/welcome_rewards"
+  partition:
+    key: partition_timestamp
+    value: "{{execution_date.strftime('%Y-%m-%d %H:00:00')}}"
+    subdir: "year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}"
+

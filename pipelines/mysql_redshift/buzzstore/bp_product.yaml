@@ -1,0 +1,123 @@
+#  For
+#
+#
+---
+pipeline_key: bp_product
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: buzzstore_mysql
+  table_name: products
+  fields:
+  - id
+  - external_product_id
+  - store_type
+  - external_brand_id
+  - country
+  - name
+  - description
+  - usage_info
+  - image_url
+  - is_hidden
+  - is_enabled
+  - priority
+  - currency
+  - market_price
+  - unit_price
+  - valid_days
+  - created_at
+  - after_buy_alert
+  - button_name
+  - buy_link
+  - sold_out
+  - barcode_enabled
+  - os
+  - version
+  - brand_id
+  - updated_at
+  - sync_description
+  - status
+  - is_cashable
+  - short_name
+  increment_key: updated_at
+  increment_key_type: timestamp
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: bp_product
+  fields:
+  - id
+  - external_product_id
+  - store_type
+  - external_brand_id
+  - country
+  - name
+  - description
+  - usage_info
+  - image_url
+  - is_hidden
+  - is_enabled
+  - priority
+  - currency
+  - market_price
+  - unit_price
+  - valid_days
+  - created_at
+  - after_buy_alert
+  - button_name
+  - buy_link
+  - sold_out
+  - barcode_enabled
+  - os
+  - version
+  - brand_id
+  - updated_at
+  - sync_description
+  - status
+  - is_cashable
+  - short_name
+  copy_method: incremental
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                    INT8            NOT NULL       ENCODE ZSTD,
+      external_product_id   VARCHAR(64)     NOT NULL       ENCODE LZO,
+      store_type            VARCHAR(10)     NOT NULL       ENCODE ZSTD,
+      external_brand_id     VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+      country               VARCHAR(10)     NOT NULL       ENCODE ZSTD,
+      name                  VARCHAR(255)    NOT NULL       ENCODE ZSTD,
+      description           VARCHAR(8192)   DEFAULT NULL   ENCODE ZSTD,
+      usage_info            VARCHAR(8192)   DEFAULT NULL   ENCODE ZSTD,
+      image_url             VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+      is_hidden             INT2            NOT NULL       ENCODE ZSTD,
+      is_enabled            INT2            NOT NULL       ENCODE ZSTD,
+      priority              INT8            NOT NULL       ENCODE ZSTD,
+      currency              VARCHAR(4)      NOT NULL       ENCODE ZSTD,
+      market_price          DECIMAL(27,9)   NOT NULL       ENCODE ZSTD,
+      unit_price            DECIMAL(27,9)   NOT NULL       ENCODE ZSTD,
+      valid_days            INT4            NOT NULL       ENCODE ZSTD,
+      created_at            TIMESTAMP       NOT NULL       ENCODE ZSTD,
+      after_buy_alert       VARCHAR(255)    NOT NULL       ENCODE ZSTD,
+      button_name           VARCHAR(30)     DEFAULT NULL   ENCODE ZSTD,
+      buy_link              VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+      sold_out              INT2            NOT NULL       ENCODE ZSTD,
+      barcode_enabled       INT2            NOT NULL       ENCODE ZSTD,
+      os                    VARCHAR(20)     DEFAULT NULL   ENCODE ZSTD,
+      version               VARCHAR(20)     DEFAULT NULL   ENCODE ZSTD,
+      brand_id              INT8            DEFAULT NULL   ENCODE ZSTD,
+      updated_at            TIMESTAMP       NOT NULL       ENCODE ZSTD,
+      sync_description      INT2            NOT NULL       ENCODE ZSTD,
+      status                INT2            NOT NULL       ENCODE ZSTD,
+      is_cashable           INT2            NOT NULL       ENCODE ZSTD,
+      short_name            VARCHAR(64)     DEFAULT NULL   ENCODE LZO,
+      PRIMARY KEY(id)
+    )
+    DISTKEY (id)
+    SORTKEY (updated_at)
+    ;
+  increment_key: updated_at
+  increment_key_type: timestamp
+  unique_key_list:
+  - id

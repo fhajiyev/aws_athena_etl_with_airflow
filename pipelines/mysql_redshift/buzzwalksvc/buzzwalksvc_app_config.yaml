@@ -1,0 +1,58 @@
+---
+pipeline_key: buzzwalksvc_app_config
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: buzzwalksvc_mysql
+  table_name: app_config
+  fields:
+  - id
+  - app_id
+  - base_reward_step
+  - base_reward
+  - reward_daily_limit
+  - timezone
+  - updated_at
+  - created_at
+  - buzzad_unit_id
+  - name
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: buzzwalksvc_app_config
+  fields:
+  - id
+  - app_id
+  - base_reward_step
+  - base_reward
+  - reward_daily_limit
+  - timezone
+  - updated_at
+  - created_at
+  - buzzad_unit_id
+  - name
+  copy_method: replace
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name} (
+      id                   INT8          NOT NULL,
+      app_id               INT8          NOT NULL,
+      base_reward_step     INT8          NOT NULL,
+      base_reward          INT8          NOT NULL,
+      reward_daily_limit   INT8          NOT NULL,
+      timezone             VARCHAR(32)   NOT NULL,
+      updated_at           TIMESTAMP     NOT NULL,
+      created_at           TIMESTAMP     NOT NULL,
+      buzzad_unit_id       INT8          NOT NULL,
+      name                 VARCHAR(512)  DEFAULT NULL,
+      PRIMARY KEY (id)
+    )
+    DISTSTYLE ALL
+    SORTKEY(app_id)
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id

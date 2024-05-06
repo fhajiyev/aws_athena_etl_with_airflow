@@ -1,0 +1,118 @@
+---
+pipeline_key: buzzml_g_association_analysis_ssg_transactions
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-12-14 00:00:00
+  schedule_interval: "0 0 * * *"
+  max_active_runs: 1
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency-oracle
+    - trigger: sla_miss
+      args:
+        channel: data-emergency-oracle
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: athena_process_buzzml_g_user_histories
+    timedelta_hours: 0
+
+sensor_soft_fail: false
+
+athena:
+  workgroup: oracle
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+          format = 'PARQUET',
+          parquet_compression = 'SNAPPY',
+          external_location = 's3://{output_bucket}/{output_prefix}',
+          bucketed_by = ARRAY['product_count'],
+          bucket_count = 1
+    ) AS (
+      SELECT
+          viewer_id, product_ids, product_count
+      FROM(
+          WITH
+          unique_transaction AS(
+              SELECT
+                  DISTINCT viewer_id, product_id
+              FROM
+                  prod_buzzml.g_user_histories
+              WHERE
+                  partition_timestamp > TIMESTAMP '{start_time}' - INTERVAL '14' DAY
+                  AND partition_timestamp <= TIMESTAMP '{start_time}'
+                  AND user_action = 'purchase_from_view_detail'
+                  AND is_occurred = true
+                  AND product_feed_id = 6
+          ),
+          product_cnt AS (
+              SELECT
+                  product_id, COUNT(*) AS cnt
+              FROM
+                  unique_transaction
+              GROUP BY
+                  product_id
+          ),
+          product_cumulative_sum AS (
+              SELECT
+                  product_id,
+                  SUM(cnt) OVER(ORDER BY cnt DESC ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS acc_cnt
+              FROM
+                  product_cnt
+              ORDER BY
+                  acc_cnt
+          ),
+          threshold AS (
+              SELECT
+                  SUM(cnt) * 0.5 AS threshold
+              FROM
+                  product_cnt
+          ),
+          selected_product_id AS (
+              SELECT
+                  product_id
+              FROM
+                  product_cumulative_sum, threshold
+              WHERE
+                  acc_cnt < threshold.threshold
+          )
+          SELECT
+              ut.viewer_id AS viewer_id, ARRAY_JOIN(ARRAY_AGG(ut.product_id), '|') AS product_ids, COUNT(ut.product_id) AS product_count
+          FROM
+              unique_transaction AS ut
+          WHERE
+              product_id IN (SELECT product_id FROM selected_product_id)
+          GROUP BY
+              ut.viewer_id
+      )
+    );
+
+  output_bucket: prod-buzzvil-data-lake
+  output_prefix: buzzml/gold/association_analysis_ssg_transactions/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzml_g_association_analysis_ssg_transactions
+  file_extension: parquet
+
+  database: prod_buzzml
+  table: g_association_analysis_ssg_transactions
+  location: s3://prod-buzzvil-data-lake/buzzml/gold/association_analysis_ssg_transactions
+
+  partition:
+    name: partition_timestamp
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+    location: s3://prod-buzzvil-data-lake/buzzml/gold/association_analysis_ssg_transactions/year={year}/month={month}/day={day}/hour={hour}
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      viewer_id                VARCHAR(64),
+      product_ids              STRING,
+      product_count            SMALLINT
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    tblproperties("parquet.compress"="SNAPPY");

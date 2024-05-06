@@ -1,0 +1,49 @@
+---
+pipeline_key: ba_nginx_access_log
+pipeline_type: redshift_spectrum_add_partition
+pipeline_dag_configs:
+  start_date: 2019-03-21 00:00:00
+  schedule_interval: "@hourly"
+athena:
+  table_name: ba_nginx_access_log
+  fields:
+  - remote
+  - host
+  - user
+  - method
+  - path
+  - code
+  - size
+  - referer
+  - agent
+  - http_x_forwarded_for
+  - created_at
+  partition:
+    location: s3://buzzvil-log-oregon/prod/buzzad/nginx_access
+    name: partition_timestamp
+    type: hourly
+
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE spectrum.ba_nginx_access_log (
+        remote                  VARCHAR,
+        host                    VARCHAR,
+        "user"                    VARCHAR,
+        method                  VARCHAR,
+        path                    VARCHAR,
+        code                    INT2,
+        size                    INT4,
+        referer                 VARCHAR,
+        agent                   VARCHAR,
+        http_x_forwarded_for    VARCHAR,
+        created_at              VARCHAR
+    )
+    PARTITIONED BY (
+      partition_timestamp timestamp
+    )
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'ignore.malformed.json'='true'
+    )
+    LOCATION
+      's3://buzzvil-log-oregon/prod/buzzad/nginx_access';

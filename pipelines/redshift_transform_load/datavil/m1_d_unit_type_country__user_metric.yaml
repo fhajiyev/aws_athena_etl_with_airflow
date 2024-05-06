@@ -1,0 +1,176 @@
+# Note that
+#
+---
+pipeline_key: m1_d_unit_type_country__user_metric
+pipeline_type: redshift_transform_load
+pipeline_dag_configs:
+  start_date: 2020-01-01 16:00:00
+  schedule_interval: "0 16 * * *"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency
+    - trigger: sla_miss
+      args:
+        channel: data-emergency
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: athena_redshift_sync_ba_imp_dau
+    timedelta_hours: 0
+  - dag_id: athena_redshift_sync_ba_alloc_dau
+    timedelta_hours: 0
+
+transform:
+  select_query: |
+    WITH
+    units AS (
+        SELECT
+            id,
+            name,
+            unit_type,
+            country
+        FROM
+            ba_unit u
+    )
+      SELECT
+          data_at AS kst_at,
+          country,
+          unit_type,
+          SUM(dau) as dau,
+          SUM(dua) as dua,
+          SUM(mau) as mau,
+          SUM(mua) as mua
+      FROM
+        (
+            -- DAU
+            SELECT
+                TIMESTAMP'{start_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS' AS data_at,
+                u.country                                                           AS country,
+                u.unit_type                                                         AS unit_type,
+                COUNT(DISTINCT d.ifa)                                               AS dau,
+                0                                                                   AS dua,
+                0                                                                   AS mau,
+                0                                                                   AS mua
+            FROM
+                ba_alloc_dau d
+                INNER JOIN units u ON
+                    d.unit_id = u.id
+            WHERE
+                d.created_at >= TIMESTAMP'{start_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS' AND
+                d.created_at < TIMESTAMP'{end_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS'
+            GROUP BY
+                1, 2, 3
+
+            UNION ALL
+
+            -- DUA
+            SELECT
+                TIMESTAMP'{start_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS' AS data_at,
+                u.country                                                           AS country,
+                u.unit_type                                                         AS unit_type,
+                0                                                                   AS dau,
+                COUNT(DISTINCT s.ifa)                                               AS dua,
+                0                                                                   AS mau,
+                0                                                                   AS mua
+            FROM
+                g_buzzad_imp_dau s
+                INNER JOIN units u ON
+                    s.unit_id = u.id
+            WHERE
+                s.created_at >= TIMESTAMP'{start_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS' AND
+                s.created_at < TIMESTAMP'{end_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS'
+            GROUP BY
+                1, 2, 3
+
+            UNION ALL
+
+            -- MAU
+            SELECT
+                TIMESTAMP'{start_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS' AS data_at,
+                u.country                                                           AS country,
+                u.unit_type                                                         AS unit_type,
+                0                                                                   AS dau,
+                0                                                                   AS dua,
+                COUNT(DISTINCT d.ifa)                                               AS mau,
+                0                                                                   AS mua
+            FROM
+                ba_alloc_dau d
+                INNER JOIN units u ON
+                    d.unit_id = u.id
+            WHERE
+                d.created_at >= DATE_TRUNC('month', TIMESTAMP'{start_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS') AND
+                d.created_at < TIMESTAMP'{end_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS'
+            GROUP BY
+                1, 2, 3
+
+
+            UNION ALL
+
+            -- MUA
+            SELECT
+                TIMESTAMP'{start_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS' AS data_at,
+                u.country                                                           AS country,
+                u.unit_type                                                         AS unit_type,
+                0                                                                   AS dau,
+                0                                                                   AS dua,
+                0                                                                   AS mau,
+                COUNT(DISTINCT s.ifa)                                               AS mua
+            FROM
+                g_buzzad_imp_dau s
+                INNER JOIN units u ON
+                    s.unit_id = u.id
+            WHERE
+                s.created_at >= DATE_TRUNC('month', TIMESTAMP'{start_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS') AND
+                s.created_at < TIMESTAMP'{end_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS'
+            GROUP BY
+                1, 2, 3
+        )
+    GROUP BY
+        1, 2, 3
+
+  delete_query : |
+    DELETE
+    FROM
+      datavil.m1_d_unit_type_country__user_metric
+    WHERE
+      kst_at >= TIMESTAMP'{start_time}' - interval '16 hours' + INTERVAL '24 HOURS' AND
+      kst_at < TIMESTAMP'{end_time}' - interval '16 hours' + INTERVAL '24 HOURS'
+
+redshift:
+  conn_id: redshift_de
+  table_name: datavil.m1_d_unit_type_country__user_metric
+  fields:
+  - kst_at
+  - country
+  - unit_type
+  - dau
+  - dua
+  - mau
+  - mua
+  unique_key_list:
+  - kst_at
+  - country
+  - unit_type
+  increment_key: kst_at
+  increment_key_type: timestamp
+  copy_method: incremental
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      kst_at      TIMESTAMP       ENCODE AZ64,
+      country     VARCHAR(2)      ENCODE ZSTD,
+      unit_type   VARCHAR(64)     ENCODE ZSTD,
+      dau         INT             ENCODE AZ64,
+      dua         INT             ENCODE AZ64,
+      mau         INT             ENCODE AZ64,
+      mua         INT             ENCODE AZ64,
+      UNIQUE(kst_at, country, unit_type)
+    )
+    DISTSTYLE EVEN
+    SORTKEY(kst_at)
+    ;

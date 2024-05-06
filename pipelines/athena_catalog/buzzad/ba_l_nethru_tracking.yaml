@@ -1,0 +1,38 @@
+---
+pipeline_key: ba_l_nethru_tracking
+pipeline_type: athena_catalog
+pipeline_dag_configs:
+  start_date: 2020-05-15 07:00:00
+  schedule_interval: "0 * * * *"
+
+athena:
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzad"
+  table: l_nethru_tracking
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/buzzad/landing/nethru_tracking"
+  partition:
+    name: partition_timestamp
+    location: "s3://{{{{ var.value.get('server_env', 'prod') }}}}-buzzvil-data-lake/buzzad/landing/nethru_tracking/year={year}/month={month}/day={day}/hour={hour}"
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      viewer_id                VARCHAR(64),
+      viewer_id_encrypted      VARCHAR(64),
+      unit_id                  BIGINT,
+      lineitem_id              BIGINT,
+      tracking_type            VARCHAR(20),
+      allocation_id            VARCHAR(64),
+      click_id                 VARCHAR(64),
+      click_url                VARCHAR(1024),
+      priority                 INT,
+      unit_price               DECIMAL(18,9),
+      plan_id                  VARCHAR(30),
+      scenario_id              VARCHAR(30),
+      log_at                   TIMESTAMP
+    )
+    PARTITIONED BY (partition_timestamp TIMESTAMP)
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'ignore.malformed.json'='true'
+    )
+    LOCATION '{location}';

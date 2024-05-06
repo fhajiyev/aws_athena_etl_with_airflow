@@ -1,0 +1,42 @@
+# CREATE TABLE `category` (
+#   `name` varchar(255) NOT NULL,
+#   `products` text NOT NULL,
+#   PRIMARY KEY (`name`)
+# ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+---
+pipeline_key: adrecommendersvc_ls_category
+pipeline_type: mysql_unload_s3
+pipeline_dag_configs:
+  start_date: 2020-10-14 17:00:00
+  schedule_interval: "0 17 * * *"
+mysql:
+  conn_id: adrecommendersvc_mysql
+  table_name: category
+  increment_key: name
+  increment_key_type: dump
+  fields:
+  - name
+  - products
+s3:
+  bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  prefix: adrecommendersvc/landing_snapshot/category/year={year}/month={month}/day={day}/hour={hour}
+  file_key: adrecommendersvc_ls_category
+  data_format: parquet
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      name       VARCHAR(1024),
+      products   STRING
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY");
+  database: "{{ var.value.get('server_env', 'prod') }}_adrecommendersvc"
+  table: ls_category
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/adrecommendersvc/landing_snapshot/category"
+  partition:
+    key: partition_timestamp
+    value: "{{execution_date.strftime('%Y-%m-%d %H:00:00')}}"
+    subdir: "year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}"
+

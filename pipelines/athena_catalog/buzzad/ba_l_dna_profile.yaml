@@ -1,0 +1,31 @@
+---
+pipeline_key: ba_l_dna_profile
+pipeline_type: athena_catalog
+pipeline_dag_configs:
+  start_date: 2020-08-06 04:00:00
+  schedule_interval: "0 * * * *"
+
+athena:
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzad"
+  table: l_dna_profile
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/buzzad/landing/dna_profile"
+  partition:
+    name: partition_timestamp
+    location: "s3://{{{{ var.value.get('server_env', 'prod') }}}}-buzzvil-data-lake/buzzad/landing/dna_profile/year={year}/month={month}/day={day}/hour={hour}"
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      viewer_id           VARCHAR(64),
+      product_feed_id     INT,
+      product_group_id    INT,
+      event_type          VARCHAR(60),
+      strategy            VARCHAR(60),
+      created_at          TIMESTAMP
+    )
+    PARTITIONED BY (partition_timestamp TIMESTAMP)
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'ignore.malformed.json'='true'
+    )
+    LOCATION '{location}';

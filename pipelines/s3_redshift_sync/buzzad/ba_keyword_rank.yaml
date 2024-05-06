@@ -1,0 +1,43 @@
+---
+pipeline_key: ba_keyword_rank
+pipeline_type: s3_redshift_sync
+pipeline_dag_configs:
+  start_date: 2019-09-01 00:00:00
+  schedule_interval: "*/10 * * * *"
+delay_seconds: 600
+s3:
+  bucket: buzzvil-log-oregon
+  prefix: prod/buzzad/buzzad-general-keyword_rank
+redshift:
+  table_name: ba_keyword_rank
+  fields:
+  - keyword
+  - rank
+  - ranked_at
+  - age_group
+  - created_at
+  unique_key_list:
+  - keyword
+  - ranked_at
+  - age_group
+  deduplicate_key_list:
+  - keyword
+  - ranked_at
+  - age_group
+  increment_key: created_at
+  increment_key_type: timestamp
+  copy_method: upsert
+  copy_option: jsonpath
+  jsonpath_location: 's3://buzzvil-log-oregon/prod/buzzad/buzzad-general-keyword_rank/jsonpaths/ba_keyword_rank.jsonpaths'
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      keyword       VARCHAR(50)   NOT NULL  ENCODE ZSTD,
+      rank          INT2          NOT NULL  ENCODE ZSTD,
+      ranked_at     TIMESTAMP     NOT NULL  ENCODE ZSTD,
+      age_group     CHAR(3)       NOT NULL  ENCODE ZSTD,
+      created_at    TIMESTAMP     NOT NULL  ENCODE ZSTD
+    )
+    DISTKEY (ranked_at)
+    SORTKEY (ranked_at)
+    ;

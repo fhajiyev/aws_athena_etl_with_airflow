@@ -1,0 +1,40 @@
+---
+pipeline_key: ba_django_creative_filter
+pipeline_type: redshift_spectrum_add_partition
+pipeline_dag_configs:
+  start_date: 2020-04-10 00:00:00
+  schedule_interval: "@hourly"
+
+athena:
+  table_name: ba_django_creative_filter
+  fields:
+  - country
+  - adn_id
+  - time
+  - is_filtered
+  - creative_url
+  - metadata
+  partition:
+    location: s3://buzzvil-log-oregon/prod/buzzad/buzzad-general-creative_filter
+    name: partition_timestamp
+    type: hourly
+
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE spectrum.ba_django_creative_filter (
+      country       VARCHAR(4),
+      adn_id        INT4,
+      time          TIMESTAMP,
+      is_filtered   INT2,
+      creative_url  VARCHAR(511),
+      metadata      VARCHAR(255)
+    )
+    PARTITIONED BY ( 
+        partition_timestamp TIMESTAMP
+    )
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'ignore.malformed.json'='true'
+    )
+    LOCATION
+      's3://buzzvil-log-oregon/prod/buzzad/buzzad-general-creative_filter/';

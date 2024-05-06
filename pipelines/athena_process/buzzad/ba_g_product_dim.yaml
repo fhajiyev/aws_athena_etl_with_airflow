@@ -1,0 +1,151 @@
+---
+pipeline_key: ba_g_product_dim
+pipeline_type: athena_process
+pipeline_dag_configs:
+  # Never change the start_date to '2019-12-31 23:00:00'. These data were unloaded from redshift.
+  # If start_date are changed to '2019-12-31 23:00:00', These data will be deleted by athena operator.
+  start_date: 2020-01-01 00:00:00
+  schedule_interval: "0 * * * *"
+
+upstream_dependencies:
+  - dag_id: redshift_s3_sync_ba_l_product
+    timedelta_hours: 0
+
+athena:
+  workgroup: buzzad
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+          format = 'PARQUET',
+          parquet_compression = 'SNAPPY',
+          external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+      SELECT
+        id,
+        ARBITRARY(code)                     AS code,
+        ARBITRARY(name)                     AS name,
+        ARBITRARY(price)                    AS price,
+        ARBITRARY(currency)                 AS currency,
+        ARBITRARY(landing_url)              AS landing_url,
+        ARBITRARY(image_url)                AS image_url,
+        ARBITRARY(original_image_url)       AS original_image_url,
+        ARBITRARY(is_active)                AS is_active,
+        ARBITRARY(normal_price)             AS normal_price,
+        ARBITRARY(description)              AS description,
+        ARBITRARY(extra_image_url)          AS extra_image_url,
+        ARBITRARY(original_extra_image_url) AS original_extra_image_url,
+        ARBITRARY(extra_image_width)        AS extra_image_width,
+        ARBITRARY(extra_image_height)       AS extra_image_height,
+        ARBITRARY(category)                 AS category,
+        ARBITRARY(category1)                AS category1,
+        ARBITRARY(category2)                AS category2,
+        ARBITRARY(category3)                AS category3,
+        ARBITRARY(category4)                AS category4,
+        ARBITRARY(google_product_category)  AS google_product_category,
+        ARBITRARY(naver_product_category)   AS naver_product_category,
+        ARBITRARY(is_popular)               AS is_popular,
+        ARBITRARY(brand)                    AS brand,
+        ARBITRARY(model)                    AS model,
+        ARBITRARY(manufacturer)             AS manufacturer,
+        ARBITRARY(shipping)                 AS shipping,
+        ARBITRARY(discount_amount)          AS discount_amount,
+        ARBITRARY(discount_unit)            AS discount_unit,
+        ARBITRARY(discount_description)     AS discount_description,
+        ARBITRARY(age_group)                AS age_group,
+        ARBITRARY(gender)                   AS gender,
+        ARBITRARY(custom_group)             AS custom_group,
+        ARBITRARY(last_update_time)         AS last_update_time,
+        ARBITRARY(created_at)               AS created_at,
+        ARBITRARY(updated_at)               AS updated_at,
+        ARBITRARY(product_feed_id)          AS product_feed_id,
+        ARBITRARY(digest)                   AS digest,
+        ARBITRARY(extra_data)               AS extra_data,
+        ARBITRARY(save_amount)              AS save_amount,
+        ARBITRARY(save_unit)                AS save_unit
+      FROM(
+        SELECT
+          *,
+          RANK() OVER (PARTITION BY id ORDER BY updated_at DESC) AS rank
+        FROM(
+          SELECT
+            *
+          FROM
+            prod_buzzad.l_product
+          WHERE
+            partition_timestamp = TIMESTAMP'{start_time}'
+
+          UNION
+
+          SELECT
+            *
+          FROM
+            prod_buzzad.g_product_dim
+          WHERE
+            partition_timestamp = TIMESTAMP'{start_time}'- INTERVAL '1' HOUR
+        )
+      )
+      WHERE
+          rank = 1
+      GROUP BY
+          id
+    );
+  output_bucket: prod-buzzvil-data-lake
+  output_prefix: buzzad/gold/product_dim/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzad_gold_product_dim
+  file_extension: parquet
+
+  database: prod_buzzad
+  table: g_product_dim
+  location: s3://prod-buzzvil-data-lake/buzzad/gold/product_dim
+  partition:
+    name: partition_timestamp
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+    location: s3://prod-buzzvil-data-lake/buzzad/gold/product_dim/year={year}/month={month}/day={day}/hour={hour}
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id                            BIGINT,
+      code                          VARCHAR(255),
+      name                          VARCHAR(1024),
+      price                         DECIMAL(18,9),
+      currency                      VARCHAR(3),
+      landing_url                   VARCHAR(2048),
+      image_url                     VARCHAR(512),
+      original_image_url            VARCHAR(2048),
+      is_active                     SMALLINT,
+      normal_price                  DECIMAL(18,9),
+      description                   VARCHAR(4096),
+      extra_image_url               VARCHAR(1024),
+      original_extra_image_url      VARCHAR(2048),
+      extra_image_width             INT,
+      extra_image_height            INT,
+      category                      VARCHAR(1024),
+      category1                     VARCHAR(255),
+      category2                     VARCHAR(255),
+      category3                     VARCHAR(255),
+      category4                     VARCHAR(255),
+      google_product_category       VARCHAR(1024),
+      naver_product_category        VARCHAR(1024),
+      is_popular                    SMALLINT,
+      brand                         VARCHAR(255),
+      model                         VARCHAR(1024),
+      manufacturer                  VARCHAR(1024),
+      shipping                      DECIMAL(18,9),
+      discount_amount               DECIMAL(18,9),
+      discount_unit                 VARCHAR(3),
+      discount_description          VARCHAR(2048),
+      age_group                     VARCHAR(64),
+      gender                        VARCHAR(64),
+      custom_group                  VARCHAR(255),
+      last_update_time              TIMESTAMP,
+      created_at                    TIMESTAMP,
+      updated_at                    TIMESTAMP,
+      product_feed_id               BIGINT,
+      digest                        VARCHAR(255),
+      extra_data                    VARCHAR(2048),
+      save_amount                   DECIMAL(18,9),
+      save_unit                     VARCHAR(3)
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    tblproperties("parquet.compress"="SNAPPY");

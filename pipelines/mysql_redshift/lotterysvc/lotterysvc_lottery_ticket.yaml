@@ -1,0 +1,47 @@
+---
+pipeline_key: lotterysvc_lottery_ticket
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: lotterysvc_mysql
+  table_name: lottery_ticket
+  fields:
+  - id
+  - lottery_id
+  - account_id
+  - numbers
+  - ordered_numbers
+  - complete
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: lotterysvc_lottery_ticket
+  fields:
+  - id
+  - lottery_id
+  - account_id
+  - numbers
+  - ordered_numbers
+  - complete
+  copy_method: incremental
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name} (
+      id                INT8           ENCODE AZ64,
+      lottery_id        INT8           ENCODE AZ64,
+      account_id        INT8           ENCODE AZ64,
+      numbers           VARCHAR(255)   DEFAULT NULL,
+      ordered_numbers   VARCHAR(255)   DEFAULT NULL,
+      complete          INT2           NOT NULL,
+      UNIQUE (lottery_id,account_id),
+      PRIMARY KEY (id)
+    )
+    DISTKEY(lottery_id)
+    SORTKEY(id)
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id

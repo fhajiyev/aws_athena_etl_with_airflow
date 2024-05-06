@@ -1,0 +1,163 @@
+---
+pipeline_key: buzzml_g_user_histories_analytics
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-09-09 00:00:00
+  schedule_interval: "0 0 * * *"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency-oracle
+    - trigger: sla_miss
+      args:
+        channel: data-emergency-oracle
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: athena_catalog_ba_l_user_event
+    timedelta_hours: 0
+
+sensor_soft_fail: false
+
+athena:
+  workgroup: oracle
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+          format = 'PARQUET',
+          parquet_compression = 'SNAPPY',
+          external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+      SELECT
+          *
+      FROM(
+          WITH
+          user_actions AS (
+              SELECT
+                  viewer_id,
+                  event_source_id,
+                  event_type,
+                  event_time
+              FROM
+                  prod_buzzad.l_user_event
+              WHERE
+                  partition_timestamp > TIMESTAMP '{start_time}' - INTERVAL '28' DAY
+                  AND partition_timestamp <= TIMESTAMP '{start_time}'
+                  AND event_type IN ('view_detail', 'add_to_cart', 'purchase')
+          ),
+          user_actions_count AS(
+              SELECT
+                  viewer_id,
+                  SUM(CASE WHEN event_source_id = 495398388397700 THEN 1 ELSE 0 END) AS ssg_count,
+                  COUNT(*) AS total_count
+              FROM
+                  user_actions
+              GROUP BY
+                  viewer_id
+          ),
+          last_action_time AS (
+              SELECT
+                  viewer_id,
+                  event_type,
+                  MAX(event_time) AS last_time
+              FROM
+                  user_actions
+              GROUP BY
+                  viewer_id, event_type
+          ),
+          last_action_time_map AS (
+              SELECT
+                  viewer_id,
+                  MAP_AGG(event_type, last_time) AS key
+              FROM
+                  last_action_time
+              GROUP BY
+                  viewer_id
+          ),
+          ssg_last_action_time AS (
+              SELECT
+                  viewer_id,
+                  event_type,
+                  MAX(event_time) AS last_time
+              FROM
+                  user_actions
+              WHERE
+                  event_source_id = 495398388397700
+              GROUP BY
+                  viewer_id, event_type
+          ),
+          ssg_last_action_time_map AS (
+              SELECT
+                  viewer_id,
+                  MAP_AGG(event_type, last_time) AS key
+              FROM
+                  ssg_last_action_time
+              GROUP BY
+                  viewer_id
+          )
+          SELECT
+              latm.viewer_id AS viewer_id,
+              uac.total_count AS total_count,
+              uac.ssg_count AS ssg_count,
+              latm.key['view_detail'] AS last_view_detail,
+              latm.key['add_to_cart'] AS last_add_to_cart,
+              latm.key['purchase'] AS last_purchase,
+              slatm.key['view_detail'] AS ssg_last_view_detail,
+              slatm.key['add_to_cart'] AS ssg_last_add_to_cart,
+              slatm.key['purchase'] AS ssg_last_purchase,
+              DATE_DIFF('HOUR', CAST(latm.key['view_detail']  AS TIMESTAMP), TIMESTAMP '{start_time}') AS elapsed_hour_last_view_detail,
+              DATE_DIFF('HOUR', CAST(latm.key['add_to_cart']  AS TIMESTAMP), TIMESTAMP '{start_time}') AS elapsed_hour_last_add_to_cart,
+              DATE_DIFF('HOUR', CAST(latm.key['purchase']     AS TIMESTAMP), TIMESTAMP '{start_time}') AS elapsed_hour_last_purchase,
+              DATE_DIFF('HOUR', CAST(slatm.key['view_detail'] AS TIMESTAMP), TIMESTAMP '{start_time}') AS elapsed_hour_ssg_last_view_detail,
+              DATE_DIFF('HOUR', CAST(slatm.key['add_to_cart'] AS TIMESTAMP), TIMESTAMP '{start_time}') AS elapsed_hour_ssg_last_add_to_cart,
+              DATE_DIFF('HOUR', CAST(slatm.key['purchase']    AS TIMESTAMP), TIMESTAMP '{start_time}') AS elapsed_hour_ssg_last_purchase
+          FROM
+              user_actions_count AS uac
+          INNER JOIN
+              last_action_time_map AS latm
+              ON uac.viewer_id = latm.viewer_id
+          INNER JOIN
+              ssg_last_action_time_map AS slatm
+              ON uac.viewer_id = slatm.viewer_id
+      )
+    );
+
+  output_bucket: prod-buzzvil-data-lake
+  output_prefix: buzzml/gold/user_histories_analytics/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzml_g_user_histories_analytics
+  file_extension: parquet
+
+  database: prod_buzzml
+  table: g_user_histories_analytics
+  location: s3://prod-buzzvil-data-lake/buzzml/gold/user_histories_analytics
+
+  partition:
+    name: partition_timestamp
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+    location: s3://prod-buzzvil-data-lake/buzzml/gold/user_histories_analytics/year={year}/month={month}/day={day}/hour={hour}
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      viewer_id                             VARCHAR(64),
+      total_count                           INTEGER,
+      ssg_count                             INTEGER,
+      last_view_detail                      VARCHAR(64),
+      last_add_to_cart                      VARCHAR(64),
+      last_purchase                         VARCHAR(64),
+      ssg_last_view_detail                  VARCHAR(64),
+      ssg_last_add_to_cart                  VARCHAR(64),
+      ssg_last_purchase                     VARCHAR(64),
+      elapsed_hour_last_view_detail         INTEGER,
+      elapsed_hour_last_add_to_cart         INTEGER,
+      elapsed_hour_last_purchase            INTEGER,
+      elapsed_hour_ssg_last_view_detail     INTEGER,
+      elapsed_hour_ssg_last_add_to_cart     INTEGER,
+      elapsed_hour_ssg_last_purchase        INTEGER
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    tblproperties("parquet.compress"="SNAPPY");

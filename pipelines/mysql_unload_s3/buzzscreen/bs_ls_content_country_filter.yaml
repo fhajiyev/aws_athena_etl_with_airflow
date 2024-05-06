@@ -1,0 +1,49 @@
+# CREATE TABLE `content_country_filters` (
+#   `id` int(11) NOT NULL AUTO_INCREMENT,
+#   `country` varchar(2) NOT NULL,
+#   `keyword` varchar(255) NOT NULL,
+#   `created_at` datetime(6) NOT NULL,
+#   PRIMARY KEY (`id`),
+#   UNIQUE KEY `content_country_filters_country_7b03a57e_uniq` (`country`,`keyword`)
+# ) ENGINE=InnoDB AUTO_INCREMENT=1303 DEFAULT CHARSET=utf8;
+
+---
+pipeline_key: bs_ls_content_country_filter
+pipeline_type: mysql_unload_s3
+pipeline_dag_configs:
+  start_date: 2020-10-01 17:00:00
+  schedule_interval: "0 17 * * *"
+mysql:
+  conn_id: buzzscreen_mysql
+  table_name: content_country_filters
+  increment_key: id
+  increment_key_type: numeric
+  fields:
+  - id
+  - country
+  - keyword
+  - created_at
+s3:
+  bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  prefix: buzzscreen/landing_snapshot/content_country_filter/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzscreen_content_country_filter
+  data_format: parquet
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id           BIGINT,
+      country      VARCHAR(64),
+      keyword      VARCHAR(1024),
+      created_at   TIMESTAMP,
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY");
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzscreen"
+  table: ls_content_country_filter
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/buzzscreen/landing_snapshot/content_country_filter"
+  partition:
+    key: partition_timestamp
+    value: "{{execution_date.strftime('%Y-%m-%d %H:00:00')}}"
+    subdir: "year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}"

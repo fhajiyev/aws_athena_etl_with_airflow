@@ -1,0 +1,119 @@
+---
+pipeline_key: m1_d_unit__ad_request_metric
+pipeline_type: redshift_transform_load
+pipeline_dag_configs:
+  start_date: 2020-07-24 16:00:00
+  schedule_interval: "0 16 * * *"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency
+    - trigger: sla_miss
+      args:
+        channel: data-emergency
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: redshift_query_ba_statistics_unit_allocation_fill_load
+    timedelta_hours: 0
+
+transform:
+  select_query: |
+    SELECT 
+      DATE_TRUNC('day', data_at + interval '9 hours') AS kst_at,
+      unit_type,
+      unit_id,
+      unit_name,
+      SUM(request_count) AS request_count, 
+      SUM(underfilled_request_count) AS underfilled_request_count, 
+      SUM(overfilled_request_count) AS overfilled_request_count, 
+      SUM(sufficiently_filled_request_count) AS sufficiently_filled_request_count, 
+      SUM(on_point_filled_request_count) AS on_point_filled_request_count, 
+      SUM(filled_request_count) AS filled_request_count, 
+      SUM(request_volume) AS request_volume, 
+      SUM(fill_volume) AS fill_volume, 
+      SUM(overfill_volume) AS overfill_volume, 
+      SUM(underfill_volume) AS underfill_volume, 
+      SUM(direct_normal_fill_volume) AS direct_normal_fill_volume, 
+      SUM(direct_backfill_fill_volume) AS direct_backfill_fill_volume, 
+      SUM(adnetwork_fill_volume) AS adnetwork_fill_volume, 
+      SUM(sdk_fill_volume) AS sdk_fill_volume, 
+      SUM(rtb_fill_volume) AS rtb_fill_volume, 
+      SUM(js_fill_volume) AS js_fill_volume
+    FROM 
+      ba_statistics_unit_allocation_fill
+    WHERE 
+      data_at >= TIMESTAMP'{start_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS'
+      AND data_at < TIMESTAMP'{end_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS'
+    GROUP BY 
+      data_at, unit_type, unit_id, unit_name
+
+  delete_query : |
+    DELETE
+    FROM
+      datavil.m1_d_unit__ad_request_metric
+    WHERE
+      kst_at >= TIMESTAMP'{start_time}' - interval '16 hours' + INTERVAL '24 HOURS' AND
+      kst_at < TIMESTAMP'{end_time}' - interval '16 hours' + INTERVAL '24 HOURS'
+
+redshift:
+  table_name: datavil.m1_d_unit__ad_request_metric
+  fields:
+  - kst_at
+  - unit_type
+  - unit_id
+  - unit_name
+  - request_count 
+  - underfilled_request_count 
+  - overfilled_request_count 
+  - sufficiently_filled_request_count 
+  - on_point_filled_request_count 
+  - filled_request_count 
+  - request_volume 
+  - fill_volume 
+  - overfill_volume 
+  - underfill_volume 
+  - direct_normal_fill_volume 
+  - direct_backfill_fill_volume 
+  - adnetwork_fill_volume 
+  - sdk_fill_volume 
+  - rtb_fill_volume 
+  - js_fill_volume
+
+  unique_key_list:
+  - kst_at
+  - unit_id
+  increment_key: kst_at
+  increment_key_type: timestamp
+  copy_method: incremental
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      kst_at                              TIMESTAMP         ENCODE AZ64,
+      unit_type                           VARCHAR(255)      ENCODE ZSTD,
+      unit_id                             BIGINT            ENCODE AZ64, 
+      unit_name                           VARCHAR(255)      ENCODE ZSTD,
+      request_count                       BIGINT            ENCODE AZ64,
+      underfilled_request_count           BIGINT            ENCODE AZ64,
+      overfilled_request_count            BIGINT            ENCODE AZ64,
+      sufficiently_filled_request_count   BIGINT            ENCODE AZ64,
+      on_point_filled_request_count       BIGINT            ENCODE AZ64,
+      filled_request_count                BIGINT            ENCODE AZ64,
+      request_volume                      BIGINT            ENCODE AZ64,
+      fill_volume                         BIGINT            ENCODE AZ64,
+      overfill_volume                     BIGINT            ENCODE AZ64,
+      underfill_volume                    BIGINT            ENCODE AZ64,
+      direct_normal_fill_volume           BIGINT            ENCODE AZ64,
+      direct_backfill_fill_volume         BIGINT            ENCODE AZ64,
+      adnetwork_fill_volume               BIGINT            ENCODE AZ64,
+      sdk_fill_volume                     BIGINT            ENCODE AZ64,
+      rtb_fill_volume                     BIGINT            ENCODE AZ64,
+      js_fill_volume                      BIGINT            ENCODE AZ64      
+    )
+    DISTKEY(unit_id)
+    SORTKEY(kst_at)
+    ;

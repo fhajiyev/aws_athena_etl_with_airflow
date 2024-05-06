@@ -1,0 +1,46 @@
+---
+pipeline_key: segmentsvc_clear_g_tag_installed_apps
+pipeline_type: s3_clear_prefix
+pipeline_dag_configs:
+  start_date: 2020-11-21 00:00:00
+  schedule_interval: "0 * * * *"
+  max_active_runs: 1
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: dev-emergency-mugshot
+    - trigger: sla_miss
+      args:
+        channel: dev-emergency-mugshot
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: athena_process_segmentsvc_g_tag_installed_apps
+    timedelta_hours: 0
+
+# query parameter contains a query for counting the number of non-empty partitions between start_time and end_time 
+athena:
+  database: "{{ var.value.get('server_env', 'prod') }}_segmentsvc"
+  table: g_tag_installed_apps
+  output_bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  output_prefix: "segmentsvc/landing/tag_snapshot_count/installed_apps_tag"
+  query: |
+    SELECT COUNT(*) AS cnt FROM (
+            SELECT 
+                partition_timestamp, COUNT(*)       
+            FROM 
+                {database}.{table}
+            WHERE
+                partition_timestamp BETWEEN TIMESTAMP'{start_time}' AND TIMESTAMP'{end_time}'
+            GROUP BY 
+                partition_timestamp
+    )
+
+s3:
+  delta_hours: 5 
+  bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  prefix: segmentsvc/gold/tag/year={year}/month={month}/day={day}/hour={hour}/origin=installed_apps_tag

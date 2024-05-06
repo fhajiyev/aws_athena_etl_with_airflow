@@ -1,0 +1,135 @@
+# LIST(INT), LIST(STRING) type의 데이터를 어떻게 할 것인지에 대한 논의 필요.
+---
+pipeline_key: bs_g_allocation_dau
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-11-24 17:00:00
+  schedule_interval: "0 17 * * *"
+
+# We should check for the last partition for making the DAU data,
+# which is 14:00 in terms of execution_schedule and
+#          14:00 ~ 15:00 (UTC) in terms of the data
+# Since this dag executes at 2020-11-25 16:59:59, the diff is 21 hours ('2020-11-24' 17:00:00 + INTERVAL '21' HOURS == '2020-11-25 14:00:00')
+# TODO: Should we check all 24 partitions? or just add a check_data_dag that does that...
+upstream_dependencies:
+  - dag_id: athena_catalog_bs_l_allocation_request
+    timedelta_hours: -21
+
+downstream_dependencies:
+   - dag_id: redshift_query_bs_allocation_dau
+     task_id: generate_uuid
+
+athena:
+  workgroup: buzzscreen
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+          format = 'PARQUET',
+          parquet_compression = 'SNAPPY',
+          external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+        SELECT DISTINCT
+          DATE_TRUNC('day', log_at + interval '9' HOUR)                                                         AS kst_at,
+          CAST(app_id AS BIGINT)                                                                                AS app_id,
+          CAST(unit_id AS BIGINT)                                                                               AS unit_id,
+          CAST(device_id AS BIGINT)                                                                             AS device_id,
+          LAST_VALUE(user_id)                                            OVER (PARTITION BY device_id, unit_id) AS publisher_user_id,
+          LAST_VALUE(ifa)                                                OVER (PARTITION BY device_id, unit_id) AS ifa,
+          LAST_VALUE(gender)                                             OVER (PARTITION BY device_id, unit_id) AS gender,
+          LAST_VALUE(CAST(membership_days AS INTEGER))                   OVER (PARTITION BY device_id, unit_id) AS membership_days,
+          LAST_VALUE(mcc)                                                OVER (PARTITION BY device_id, unit_id) AS mcc,
+          LAST_VALUE(mnc)                                                OVER (PARTITION BY device_id, unit_id) AS mnc,
+          LAST_VALUE(os_version)                                         OVER (PARTITION BY device_id, unit_id) AS os_version,
+          LAST_VALUE(device_name)                                        OVER (PARTITION BY device_id, unit_id) AS device_name,
+          LAST_VALUE(CAST(sdk_version AS INTEGER))                       OVER (PARTITION BY device_id, unit_id) AS sdk_version,
+          LAST_VALUE(user_agent)                                         OVER (PARTITION BY device_id, unit_id) AS user_agent,
+          LAST_VALUE(network_type)                                       OVER (PARTITION BY device_id, unit_id) AS network_type,
+          LAST_VALUE(timezone)                                           OVER (PARTITION BY device_id, unit_id) AS timezone,
+          LAST_VALUE(client_ip)                                          OVER (PARTITION BY device_id, unit_id) AS client_ip,
+          --V1 ONLY
+          LAST_VALUE(carrier)                                            OVER (PARTITION BY device_id, unit_id) AS carrier,
+          LAST_VALUE(default_browser)                                    OVER (PARTITION BY device_id, unit_id) AS default_browser,
+          LAST_VALUE(installed_browsers)                                 OVER (PARTITION BY device_id, unit_id) AS installed_browsers,
+          LAST_VALUE(package_name)                                       OVER (PARTITION BY device_id, unit_id) AS package_name,
+          LAST_VALUE(region)                                             OVER (PARTITION BY device_id, unit_id) AS region,
+          LAST_VALUE(CAST(year_of_birth AS INTEGER))                     OVER (PARTITION BY device_id, unit_id) AS year_of_birth,
+          LAST_VALUE(is_allocation_test)                                 OVER (PARTITION BY device_id, unit_id) AS is_allocation_test,
+          LAST_VALUE(is_ifa_limit_ad_tracking_enabled)                   OVER (PARTITION BY device_id, unit_id) AS is_ifa_limit_ad_tracking_enabled,
+          LAST_VALUE(is_test)                                            OVER (PARTITION BY device_id, unit_id) AS is_test,
+          LAST_VALUE(support_remove_after_impression)                    OVER (PARTITION BY device_id, unit_id) AS support_remove_after_impression,
+          --V2 ONLY
+          LAST_VALUE(android_id)                                         OVER (PARTITION BY device_id, unit_id) AS android_id,
+          LAST_VALUE(birthday)                                           OVER (PARTITION BY device_id, unit_id) AS birthday,
+          LAST_VALUE(relationship)                                       OVER (PARTITION BY device_id, unit_id) AS relationship,
+          LAST_VALUE(platform)                                           OVER (PARTITION BY device_id, unit_id) AS platform,
+          LAST_VALUE(language)                                           OVER (PARTITION BY device_id, unit_id) AS language,
+          LAST_VALUE(latitude)                                           OVER (PARTITION BY device_id, unit_id) AS latitude,
+          LAST_VALUE(longitude)                                          OVER (PARTITION BY device_id, unit_id) AS longitude,
+          LAST_VALUE(country)                                            OVER (PARTITION BY device_id, unit_id) AS country,
+          LAST_VALUE(cps_category)                                       OVER (PARTITION BY device_id, unit_id) AS cps_category,
+          LAST_VALUE(CAST(target_fill AS INTEGER))                       OVER (PARTITION BY device_id, unit_id) AS target_fill,
+          LAST_VALUE(is_mock_response)                                   OVER (PARTITION BY device_id, unit_id) AS is_mock_response
+        FROM
+          {{{{ var.value.get('server_env', 'prod') }}}}_buzzscreen.l_allocation_request
+        WHERE
+          partition_timestamp >= TIMESTAMP'{start_time}' - INTERVAL '2' HOUR AND -- Scans for 00:00 KST (15:00 UTC) to generate KST-based DAU
+          partition_timestamp < TIMESTAMP'{end_time}' - INTERVAL '2' HOUR
+
+    );
+  output_bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  output_prefix: buzzscreen/gold/allocation_dau/year={year}/month={month}/day={day}/hour={hour}
+  file_key: allocation_dau
+  file_extension: parquet
+
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzscreen"
+  table: g_allocation_dau
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/buzzscreen/gold/allocation_dau"
+  partition:
+    name: partition_timestamp
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+    location: "s3://{{{{ var.value.get('server_env', 'prod') }}}}-buzzvil-data-lake/buzzscreen/gold/allocation_dau/year={year}/month={month}/day={day}/hour={hour}"
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+        kst_at                             TIMESTAMP,
+        app_id                             BIGINT,
+        unit_id                            BIGINT,
+        device_id                          BIGINT,
+        publisher_user_id                  VARCHAR(1024),
+        ifa                                VARCHAR(64),
+        gender                             VARCHAR(1),
+        membership_days                    INT,
+        mcc                                VARCHAR(3),
+        mnc                                VARCHAR(3),
+        os_version                         VARCHAR(64),
+        device_name                        VARCHAR(512),
+        sdk_version                        INT,
+        user_agent                         VARCHAR(1024),
+        network_type                       VARCHAR(1024),
+        timezone                           VARCHAR(1024),
+        client_ip                          VARCHAR(1024),
+        carrier                            VARCHAR(1024),
+        default_browser                    VARCHAR(1024),
+        installed_browsers                 VARCHAR(8192),
+        package_name                       VARCHAR(1024),
+        region                             VARCHAR(1024),
+        year_of_birth                      INT,
+        is_allocation_test                 BOOLEAN,
+        is_ifa_limit_ad_tracking_enabled   BOOLEAN,
+        is_test                            BOOLEAN,
+        support_remove_after_impression    BOOLEAN,
+        android_id                         VARCHAR(64),
+        birthday                           VARCHAR(64),
+        relationship                       VARCHAR(1),
+        platform                           BIGINT,
+        language                           VARCHAR(64),
+        latitude                           DECIMAL(27,9),
+        longitude                          DECIMAL(27,9),
+        country                            VARCHAR(1024),
+        cps_category                       VARCHAR(1024),
+        target_fill                        INT,
+        is_mock_response                   BOOLEAN
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    tblproperties("parquet.compress"="SNAPPY");

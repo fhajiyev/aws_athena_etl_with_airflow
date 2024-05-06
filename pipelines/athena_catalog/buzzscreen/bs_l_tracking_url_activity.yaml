@@ -1,0 +1,33 @@
+# log source
+# https://github.com/Buzzvil/buzzscreen-api/blob/223c78616954b4aff233142663cb8afcc5de7e90/internal/pkg/event/usecase.go#L59
+---
+pipeline_key: bs_l_tracking_url_activity
+pipeline_type: athena_catalog
+pipeline_dag_configs:
+  start_date: 2020-09-24 08:00:00
+  schedule_interval: "0 * * * *"
+
+athena:
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzscreen"
+  table: l_tracking_url_activity
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/eks/namespace_name=buzzscreen/type=tracking_url_activity/"
+  partition:
+    name: partition_timestamp
+    location: "s3://{{{{ var.value.get('server_env', 'prod') }}}}-buzzvil-data-lake/eks/namespace_name=buzzscreen/type=tracking_url_activity/year={year}/month={month}/day={day}/hour={hour}"
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      device_id     BIGINT,
+      method        STRING,
+      resource_id   BIGINT,
+      resource_type STRING,
+      tracking_url  STRING,
+      event_at      BIGINT,
+      log_at        TIMESTAMP
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    ROW FORMAT SERDE 'org.apache.hive.hcatalog.data.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1'
+    )
+    LOCATION '{location}';

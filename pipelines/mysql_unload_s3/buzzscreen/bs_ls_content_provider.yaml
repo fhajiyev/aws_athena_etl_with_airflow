@@ -1,0 +1,135 @@
+# CREATE TABLE `content_providers` (
+#   `id` bigint(20) NOT NULL AUTO_INCREMENT,
+#   `publisher` varchar(100) NOT NULL,
+#   `sub_publisher` varchar(100) NOT NULL,
+#   `enabled` varchar(1) NOT NULL,
+#   `created_at` datetime NOT NULL,
+#   `name` varchar(100) NOT NULL,
+#   `template_ids` varchar(255) NOT NULL,
+#   `country` varchar(2) NOT NULL,
+#   `categories` varchar(255) NOT NULL,
+#   `re_title` varchar(255) NOT NULL,
+#   `re_description` varchar(255) NOT NULL,
+#   `re_filter` varchar(255) NOT NULL,
+#   `tracker` varchar(100) NOT NULL,
+#   `extra` longtext NOT NULL,
+#   `buzzscreen` tinyint(1) NOT NULL,
+#   `target_age_max` smallint(5) unsigned DEFAULT NULL,
+#   `target_age_min` smallint(5) unsigned DEFAULT NULL,
+#   `target_gender` varchar(1) NOT NULL,
+#   `clean_mode` smallint(5) unsigned NOT NULL,
+#   `custom_target_1` varchar(255) NOT NULL,
+#   `custom_target_2` varchar(255) NOT NULL,
+#   `custom_target_3` varchar(255) NOT NULL,
+#   `buzzscreen_id` bigint(20) DEFAULT NULL,
+#   `landing_type` smallint(5) unsigned NOT NULL,
+#   `score` int(10) unsigned NOT NULL,
+#   `ctr_filter_off` tinyint(1) NOT NULL,
+#   `channel_id` int(10) unsigned NOT NULL,
+#   `organization_id` int(10) unsigned NOT NULL,
+#   `target_unit` varchar(500) NOT NULL,
+#   `scoring_off` tinyint(1) NOT NULL,
+#   `updated_at` datetime(6) NOT NULL,
+#   `media_type` smallint(5) unsigned NOT NULL,
+#   `language` varchar(8) NOT NULL,
+#   PRIMARY KEY (`id`),
+#   UNIQUE KEY `content_providers_publisher_6901d7e023034b7c_uniq` (`publisher`,`sub_publisher`,`country`)
+# ) ENGINE=InnoDB AUTO_INCREMENT=5556 DEFAULT CHARSET=utf8
+---
+pipeline_key: bs_ls_content_provider
+pipeline_type: mysql_unload_s3
+pipeline_dag_configs:
+  start_date: 2020-10-01 17:00:00
+  schedule_interval: "0 17 * * *"
+mysql:
+  conn_id: buzzscreen_mysql
+  table_name: content_providers
+  increment_key: id
+  increment_key_type: numeric
+  fields:
+  - id
+  - publisher
+  - sub_publisher
+  - enabled
+  - created_at
+  - name
+  - template_ids
+  - country
+  - categories
+  - re_title
+  - re_description
+  - re_filter
+  - tracker
+  - extra
+  - buzzscreen
+  - target_age_max
+  - target_age_min
+  - target_gender
+  - clean_mode
+  - custom_target_1
+  - custom_target_2
+  - custom_target_3
+  - buzzscreen_id
+  - landing_type
+  - score
+  - ctr_filter_off
+  - channel_id
+  - organization_id
+  - target_unit
+  - scoring_off
+  - updated_at
+  - media_type
+  - language
+s3:
+  bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  prefix: buzzscreen/landing_snapshot/content_provider/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzscreen_content_provider
+  data_format: parquet
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id              BIGINT,
+      publisher       VARCHAR(255),
+      sub_publisher   VARCHAR(255),
+      enabled         VARCHAR(1),
+      created_at      TIMESTAMP,
+      name            VARCHAR(255),
+      template_ids    VARCHAR(512),
+      country         VARCHAR(2),
+      categories      VARCHAR(512),
+      re_title        VARCHAR(512),
+      re_description  VARCHAR(512),
+      re_filter       VARCHAR(512),
+      tracker         VARCHAR(255),
+      extra           VARCHAR(65535),
+      buzzscreen      TINYINT,
+      target_age_max  INT,
+      target_age_min  INT,
+      target_gender   VARCHAR(1),
+      clean_mode      INT,
+      custom_target_1 VARCHAR(512),
+      custom_target_2 VARCHAR(512),
+      custom_target_3 VARCHAR(512),
+      buzzscreen_id   BIGINT,
+      landing_type    INT,
+      score           BIGINT,
+      ctr_filter_off  TINYINT,
+      channel_id      BIGINT,
+      organization_id BIGINT,
+      target_unit     VARCHAR(1024),
+      scoring_off     TINYINT,
+      updated_at      TIMESTAMP,
+      media_type      INT,
+      language        VARCHAR(32),
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY");
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzscreen"
+  table: ls_content_provider
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/buzzscreen/landing_snapshot/content_provider"
+  partition:
+    key: partition_timestamp
+    value: "{{execution_date.strftime('%Y-%m-%d %H:00:00')}}"
+    subdir: "year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}"

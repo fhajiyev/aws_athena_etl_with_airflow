@@ -1,0 +1,46 @@
+---
+pipeline_key: ba_o_user_event
+pipeline_type: athena_process_filter
+pipeline_dag_configs:
+  start_date: 2020-03-13 09:00:00
+  schedule_interval: "20 * * * *"
+filter:
+  name: event_source_id
+  values:
+    - 467461536668238
+    - 495398388397700
+    - 521077667266236
+    - 549289623996052
+    - 593158501188462
+    - 774734055748845
+    - 835900894976867
+    - 900192734887479
+    - 906904210723403
+athena:
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+        format = 'TEXTFILE',
+        field_delimiter = '\t',
+        external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+        SELECT
+            event_source_id, tracker_id, viewer_id_encrypted as viewer_id, event_type, event_name, event_time, event_revenue, event_currency,
+            extra_segment1, extra_segment2, unit_id, click_id, lineitem_id, creative_id, package_name, publisher_id,
+            sub_publisher_id, log_type, log_at
+        FROM
+            prod_buzzad.l_user_event
+        WHERE
+            viewer_id IS NOT NULL AND
+            viewer_id != '' AND
+            partition_timestamp >= TIMESTAMP'{start_time}' AND
+            partition_timestamp < TIMESTAMP'{end_time}' AND
+            {filter_name} = {filter_value}
+    );
+  output_bucket: buzzad-data
+  output_prefix: dna-resources/user-event/{filter_name}={filter_value}/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzad-user-event-{filter_name}-{filter_value}
+  file_extension: gz
+
+  database: prod_buzzad
+  table: o_user_event

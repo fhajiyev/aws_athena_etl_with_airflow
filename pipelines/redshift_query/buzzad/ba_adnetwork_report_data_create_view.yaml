@@ -1,0 +1,121 @@
+---
+pipeline_key: ba_adnetwork_report_data_create_view
+pipeline_type: redshift_query
+pipeline_dag_configs:
+  start_date: 2020-06-03 09:00:00
+  schedule_interval: "0 * * * *"
+redshift:
+  query: |
+    BEGIN;
+    DROP VIEW IF EXISTS ba_adnetwork_report_data;
+    CREATE VIEW ba_adnetwork_report_data AS
+    SELECT
+        cc.adnetwork_id adnetwork_id,
+        cc.report_app_id adnetwork_app_id,
+        cc.report_placement_id adnetwork_placement_id,
+        cc.lineitem_id lineitem_id,
+        cc.revenue_type revenue_type,
+        cc.country lineitem_country,
+        cc.unit_id::BIGINT unit_id,
+        rd.data_at data_at,
+        rd.country country,
+        rd.requests request_count,
+        rd.fills fill_count,
+        rd.impressions impression_count,
+        rd.clicks click_count,
+        rd.conversions conversion_count,
+        rd.revenue revenue_sum,
+        rd.created_at created_at,
+        rd.updated_at updated_at
+    FROM
+        public.adnreportsvc_report_data rd
+        JOIN (
+            SELECT
+                SPLIT_PART(l.target_unit, ',', 1) unit_id,
+                l.adnetwork_id adnetwork_id,
+                c.report_app_id report_app_id,
+                c.report_placement_id report_placement_id,
+                c.lineitem_id lineitem_id,
+                l.revenue_type,
+                l.country country
+            FROM
+                public.ba_lineitem l
+                JOIN public.ba_lineitem_adnetwork_configs c ON l.id = c.lineitem_id
+            WHERE
+                NOT(
+                    c.report_app_id = ''
+                    AND c.report_placement_id = ''
+                )
+        ) cc ON rd.adnetwork_id = cc.adnetwork_id
+        AND NVL(rd.app_id, '') = NVL(cc.report_app_id, '')
+        AND NVL(rd.placement_id, '') = NVL(cc.report_placement_id, '')
+        AND rd.country = cc.country
+    UNION
+    SELECT
+        cc.adnetwork_id adnetwork_id,
+        cc.report_app_id adnetwork_app_id,
+        cc.report_placement_id adnetwork_placement_id,
+        cc.lineitem_id lineitem_id,
+        cc.revenue_type revenue_type,
+        cc.country lineitem_country,
+        cc.unit_id::BIGINT unit_id,
+        rd.data_at data_at,
+        rd.country country,
+        rd.requests request_count,
+        rd.fills fill_count,
+        rd.impressions impression_count,
+        rd.clicks click_count,
+        rd.conversions conversion_count,
+        rd.revenue revenue_sum,
+        rd.created_at created_at,
+        rd.updated_at updated_at
+    FROM
+        public.adnreportsvc_report_data rd
+        JOIN (
+            SELECT
+                SPLIT_PART(l.target_unit, ',', 1) unit_id,
+                l.adnetwork_id adnetwork_id,
+                c.report_app_id report_app_id,
+                c.report_placement_id report_placement_id,
+                c.lineitem_id lineitem_id,
+                l.revenue_type,
+                l.country country
+            FROM
+                public.ba_lineitem l
+                JOIN public.ba_lineitem_adnetwork_configs c ON l.id = c.lineitem_id
+            WHERE
+                NOT(
+                    c.report_app_id = ''
+                    AND c.report_placement_id = ''
+                )
+        ) cc ON rd.adnetwork_id = cc.adnetwork_id
+        AND NVL(rd.app_id, '') = NVL(cc.report_app_id, '')
+        AND NVL(rd.placement_id, '') = NVL(cc.report_placement_id, '')
+        AND cc.country = 'ZZ'
+        AND rd.id NOT IN(
+            SELECT
+                rd.id
+            FROM
+                public.adnreportsvc_report_data rd
+                JOIN (
+                    SELECT
+                        l.adnetwork_id adnetwork_id,
+                        c.report_app_id report_app_id,
+                        c.report_placement_id report_placement_id,
+                        l.country country
+                    FROM
+                        ba_lineitem l
+                        JOIN ba_lineitem_adnetwork_configs c ON l.id = c.lineitem_id
+                    WHERE
+                        NOT(
+                            c.report_app_id = ''
+                            AND c.report_placement_id = ''
+                        )
+                ) cc ON rd.adnetwork_id = cc.adnetwork_id
+                AND NVL(rd.app_id, '') = NVL(cc.report_app_id, '')
+                AND NVL(rd.placement_id, '') = NVL(cc.report_placement_id, '')
+                AND rd.country = cc.country
+        )
+    ;
+    WITH NO SCHEMA BINDING;
+    END;

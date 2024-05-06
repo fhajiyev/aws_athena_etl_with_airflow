@@ -1,0 +1,111 @@
+# CREATE TABLE `creatives` (
+#   `id` int(11) NOT NULL AUTO_INCREMENT,
+#   `name` varchar(100) NOT NULL,
+#   `lineitem_id` bigint(20) NOT NULL,
+#   `width` int(10) unsigned NOT NULL,
+#   `height` int(10) unsigned NOT NULL,
+#   `icon` varchar(512) NOT NULL,
+#   `image_url` varchar(255) NOT NULL,
+#   `click_url` varchar(3000) NOT NULL,
+#   `creative_type` smallint(5) unsigned NOT NULL,
+#   `is_enabled` tinyint(1) NOT NULL,
+#   `html` longtext NOT NULL,
+#   `layout_type` smallint(5) unsigned NOT NULL,
+#   `background_image_url` varchar(255) NOT NULL,
+#   `action_description` varchar(1024) NOT NULL,
+#   `call_to_action` varchar(63) NOT NULL,
+#   `description` varchar(1024) NOT NULL,
+#   `short_action_description` varchar(1024) NOT NULL,
+#   `landing_type` smallint(5) unsigned,
+#   `adchoice_url` varchar(1024) NOT NULL,
+#   `created_at` datetime(6) NOT NULL,
+#   `updated_at` datetime(6) NOT NULL,
+#   `ad_video_id` int(11) DEFAULT NULL,
+#   `is_deeplink` tinyint(1) NOT NULL DEFAULT '0',
+#   `ui_name` varchar(100),
+#   `category` varchar(255) DEFAULT NULL,
+#   PRIMARY KEY (`id`),
+#   KEY `creatives_a19a643e` (`lineitem_id`)
+# ) ENGINE=InnoDB AUTO_INCREMENT=723428 DEFAULT CHARSET=utf8
+---
+pipeline_key: ba_ls_creative
+pipeline_type: mysql_unload_s3
+pipeline_dag_configs:
+  start_date: 2020-09-01 17:00:00
+  schedule_interval: "0 17 * * *"
+mysql:
+  conn_id: buzzad_mysql
+  table_name: creatives
+  increment_key: id
+  increment_key_type: numeric
+  fields:
+    - id
+    - name
+    - lineitem_id
+    - width
+    - height
+    - icon
+    - image_url
+    - click_url
+    - creative_type
+    - is_enabled
+    - html
+    - layout_type
+    - background_image_url
+    - action_description
+    - call_to_action
+    - description
+    - short_action_description
+    - landing_type
+    - adchoice_url
+    - created_at
+    - updated_at
+    - ad_video_id
+    - is_deeplink
+    - ui_name
+    - category
+s3:
+  bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  prefix: buzzad/landing_snapshot/creatives/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzad_creatives
+  data_format: parquet
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id                            INT,
+      name                          VARCHAR(100),
+      lineitem_id                   BIGINT,
+      width                         INT,
+      height                        INT,
+      icon                          VARCHAR(512),
+      image_url                     VARCHAR(255),
+      click_url                     VARCHAR(3000),
+      creative_type                 SMALLINT,
+      is_enabled                    TINYINT,
+      html                          VARCHAR(65535),
+      layout_type                   SMALLINT,
+      background_image_url          VARCHAR(255),
+      action_description            VARCHAR(1024),
+      call_to_action                VARCHAR(63),
+      description                   VARCHAR(1024),
+      short_action_description      VARCHAR(1024),
+      landing_type                  SMALLINT,
+      adchoice_url                  VARCHAR(1024),
+      created_at                    TIMESTAMP,
+      updated_at                    TIMESTAMP,
+      ad_video_id                   INT,
+      is_deeplink                   TINYINT,
+      ui_name                       VARCHAR(100),
+      category                      VARCHAR(255)
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY");
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzad"
+  table: ls_cps_product
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/buzzad/landing_snapshot/creatives"
+  partition:
+    key: partition_timestamp
+    value: "{{execution_date.strftime('%Y-%m-%d %H:00:00')}}"
+    subdir: "year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}"

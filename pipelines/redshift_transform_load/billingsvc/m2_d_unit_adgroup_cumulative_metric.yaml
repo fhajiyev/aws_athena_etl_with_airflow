@@ -1,0 +1,160 @@
+# Note that
+#
+---
+pipeline_key: m2_d_unit_adgroup_cumulative_metric
+pipeline_type: redshift_transform_load
+pipeline_dag_configs:
+  start_date: 2020-01-01 16:00:00
+  schedule_interval: "0 16 * * *"
+
+upstream_dependencies:
+  - dag_id: redshift_transform_load_m1_d_adgroup_cumulative_metric
+    timedelta_hours: 0
+
+transform:
+  delete_query : |
+    DELETE
+    FROM
+      datavil.m2_d_unit_adgroup_cumulative_metric
+    WHERE
+      kst_at >= TIMESTAMP'{start_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS' AND
+      kst_at < TIMESTAMP'{end_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS'
+
+  select_query: |
+    SELECT
+        DATE_TRUNC('day', CONVERT_TIMEZONE('Asia/Seoul', created_at)) as kst_at,
+        unit_id,
+        ad_group_id,
+        ad_group_total_budget,
+        _cumulative_unit_ad_group_sales AS cumulative_spent,
+        _cumulative_unit_ad_group_overspent AS cumulative_overspent
+    FROM
+    (
+        SELECT
+            created_at,
+            unit_id,
+            ad_group_id,
+            ad_group_total_budget,
+            _cumulative_ad_group_sales,
+            _cumulative_unit_ad_group_sales,
+            SUM(_unit_ad_group_overspent) OVER (PARTITION BY ad_group_id, unit_id ORDER BY created_at ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS _cumulative_unit_ad_group_overspent,
+            ROW_NUMBER() OVER (PARTITION BY ad_group_id, unit_id ORDER BY created_at DESC) AS row_num
+        FROM
+        (
+            SELECT
+                created_at,
+                unit_id,
+                ad_group_id,
+                ad_group_total_budget,
+                sales,
+                SUM(sales) OVER (PARTITION BY ad_group_id ORDER BY created_at ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) as _cumulative_ad_group_sales,
+                SUM(sales) OVER (PARTITION BY unit_id, ad_group_id ORDER BY created_at ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) as _cumulative_unit_ad_group_sales,
+
+                -- When this period's unit * ad_group spent exceeds the ad_group budget
+                CASE
+                    WHEN (ad_group_total_budget - _cumulative_ad_group_sales >= 0) THEN 0 --No overspending
+                    WHEN (_cumulative_ad_group_sales - ad_group_total_budget < sales) THEN _cumulative_ad_group_sales - ad_group_total_budget --Partial overspent
+                    WHEN (_cumulative_ad_group_sales - ad_group_total_budget >= sales) THEN sales --Clean overspent
+                    ELSE NULL
+                END _unit_ad_group_overspent
+            FROM
+            (
+                SELECT
+                    CONVERT_TIMEZONE('Asia/Seoul', 'UTC', kst_at) AS created_at,
+                    NULL as unit_id,
+                    ad_group_id,
+                    cumulative_spent as sales,
+                    total_budget as ad_group_total_budget
+                FROM
+                    datavil.m1_d_adgroup_cumulative_metric
+                WHERE
+                    kst_at = TIMESTAMP'{start_time}' - INTERVAL '16 HOUR'
+
+                UNION ALL
+
+                SELECT
+                    s.created_at,
+                    s.unit_id,
+                    l.ad_group_id,
+                    s.sales,
+                    a.total_budget
+                FROM
+                (
+                    SELECT
+                        created_at,
+                        unit_id,
+                        lineitem_id,
+                        sales
+                    FROM
+                        ba_impression
+                    WHERE
+                        created_at >= TIMESTAMP'{start_time}' - INTERVAL '16 HOUR' - INTERVAL '9 HOUR' + INTERVAL '24 HOUR' AND
+                        created_at < TIMESTAMP'{end_time}' - INTERVAL '16 HOUR' - INTERVAL '9 HOUR' + INTERVAL '24 HOUR'
+
+                    UNION ALL
+
+                    SELECT
+                        created_at,
+                        unit_id,
+                        lineitem_id,
+                        sales
+                    FROM
+                        ba_click
+                    WHERE
+                        created_at >= TIMESTAMP'{start_time}' - INTERVAL '16 HOUR' - INTERVAL '9 HOUR' + INTERVAL '24 HOUR' AND
+                        created_at < TIMESTAMP'{end_time}' - INTERVAL '16 HOUR' - INTERVAL '9 HOUR' + INTERVAL '24 HOUR'
+
+                    UNION ALL
+
+                    SELECT
+                        created_at,
+                        unit_id,
+                        lineitem_id,
+                        sales
+                    FROM
+                        ba_conversion
+                    WHERE
+                        created_at >= TIMESTAMP'{start_time}' - INTERVAL '16 HOUR' - INTERVAL '9 HOUR' + INTERVAL '24 HOUR' AND
+                        created_at < TIMESTAMP'{end_time}' - INTERVAL '16 HOUR' - INTERVAL '9 HOUR' + INTERVAL '24 HOUR'
+                ) s
+                INNER JOIN ba_lineitem l ON
+                    s.lineitem_id = l.id
+                INNER JOIN ba_ad_group_extended a ON
+                    l.ad_group_id = a.id
+            ) s
+        )
+    )
+    WHERE
+        row_num = 1
+
+redshift:
+  conn_id: redshift_de
+  table_name: datavil.m2_d_unit_adgroup_cumulative_metric
+  fields:
+  - kst_at
+  - unit_id
+  - ad_group_id
+  - ad_group_total_budget
+  - cumulative_spent
+  - cumulative_overspent
+  unique_key_list:
+  - kst_at
+  - unit_id
+  - ad_group_id
+  increment_key: kst_at
+  increment_key_type: timestamp
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      kst_at                               TIMESTAMP       DEFAULT NULL   ENCODE AZ64,
+      unit_id                              INT8            DEFAULT NULL   ENCODE AZ64,
+      ad_group_id                          INT8            DEFAULT NULL   ENCODE AZ64,
+      ad_group_total_budget                DECIMAL(27,9)   DEFAULT NULL   ENCODE AZ64,
+      cumulative_spent                     DECIMAL(27,9)   DEFAULT NULL   ENCODE AZ64,
+      cumulative_overspent                 DECIMAL(27,9)   DEFAULT NULL   ENCODE AZ64,
+      UNIQUE(kst_at, unit_id, ad_group_id)
+    )
+    DISTKEY(unit_id)
+    SORTKEY(kst_at)
+    ;

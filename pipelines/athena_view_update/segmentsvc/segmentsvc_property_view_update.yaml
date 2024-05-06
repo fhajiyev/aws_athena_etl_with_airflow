@@ -1,0 +1,55 @@
+---
+pipeline_key: segmentsvc_property_view_update
+pipeline_type: athena_view_update
+pipeline_dag_configs:
+  start_date: 2020-11-18 07:00:00
+  schedule_interval: "0 * * * *"
+  max_active_runs: 1
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: dev-emergency-mugshot
+    - trigger: sla_miss
+      args:
+        channel: dev-emergency-mugshot
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: athena_catalog_segmentsvc_g_property
+    timedelta_hours: 0
+  - dag_id: s3_clear_prefix_segmentsvc_clear_g_property_ba_device
+    timedelta_hours: 0
+  - dag_id: s3_clear_prefix_segmentsvc_clear_g_property_pixelsvc_data
+    timedelta_hours: 0  
+
+# query_count parameter contains a query for checking the size of a newly generated partition
+# query_view parameter contains a query for updating the property view to point to the newly generated partition
+athena:
+  database: "{{ var.value.get('server_env', 'prod') }}_segmentsvc"
+  table: g_property
+  output_bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake" 
+  output_prefix: "segmentsvc/landing/property_current_snapshot_size"
+  query_count: |
+    SELECT COUNT(*) AS cnt
+    FROM 
+        {database}.{table}
+    WHERE
+        partition_timestamp = TIMESTAMP'{exec_date}'
+
+  query_view: |
+    CREATE OR REPLACE VIEW {database}.{table}_view AS
+    SELECT
+      data_source_id,
+      property_timestamp,
+      payload,
+      uid_key,
+      uid_value
+    FROM
+      {database}.{table}
+    WHERE
+      partition_timestamp = TIMESTAMP'{exec_date}'
+

@@ -1,0 +1,156 @@
+---
+pipeline_key: buzzml_g_product_user_recent
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-11-28 00:00:00
+  schedule_interval: "0 * * * *"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency-oracle
+    - trigger: sla_miss
+      args:
+        channel: data-emergency-oracle
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: athena_process_buzzml_g_preprocessed_user_event
+    timedelta_hours: 0
+
+sensor_soft_fail: false
+
+athena:
+  workgroup: oracle
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+          format = 'PARQUET',
+          parquet_compression = 'SNAPPY',
+          external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+      SELECT
+        CAST(viewer_id AS VARCHAR(64)) AS viewer_id,
+        CAST(product_feed_id AS BIGINT) AS product_feed_id,
+        CAST(view_detail_product_ids AS VARCHAR(65535)) AS view_detail_product_ids,
+        CAST(view_detail_count AS SMALLINT) AS view_detail_count,
+        CAST(add_to_cart_product_ids AS VARCHAR(65535)) AS add_to_cart_product_ids,
+        CAST(add_to_cart_count AS SMALLINT) AS add_to_cart_count,
+        CAST(purchase_product_ids AS VARCHAR(65535)) AS purchase_product_ids,
+        CAST(purchase_count AS SMALLINT) AS purchase_count
+      FROM(
+        WITH
+        events AS (
+          SELECT
+            viewer_id,
+            product_id,
+            product_feed_id,
+            event_type
+          FROM
+            prod_buzzml.g_preprocessed_user_event
+          WHERE
+            partition_timestamp >= TIMESTAMP '{start_time}' - INTERVAL '14' DAY
+            AND partition_timestamp < TIMESTAMP '{end_time}'
+            AND event_type IN ('purchase', 'add_to_cart')
+        ),
+        view_detail AS (
+          SELECT
+            viewer_id,
+            product_feed_id,
+            COUNT(product_id) AS count,
+            ARRAY_JOIN(ARRAY_AGG(product_id), '|') AS product_ids
+          FROM
+            events
+          WHERE
+            event_type = 'view_detail'
+          GROUP BY
+          viewer_id, product_feed_id
+        ),
+        add_to_cart AS (
+          SELECT
+            viewer_id,
+            product_feed_id,
+            COUNT(product_id) AS count,
+            ARRAY_JOIN(ARRAY_AGG(product_id), '|') AS product_ids
+          FROM
+            events
+          WHERE
+            event_type = 'add_to_cart'
+          GROUP BY
+          viewer_id, product_feed_id
+        ),
+        purchase AS (
+          SELECT
+            viewer_id,
+            product_feed_id,
+            COUNT(product_id) AS count,
+            ARRAY_JOIN(ARRAY_AGG(product_id), '|') AS product_ids
+          FROM
+            events
+          WHERE
+            event_type = 'purchase'
+          GROUP BY
+          viewer_id, product_feed_id
+        ),
+        first_join AS (
+          SELECT
+            COALESCE(vd.viewer_id, c.viewer_id) AS viewer_id,
+            COALESCE(vd.product_feed_id, c.product_feed_id) AS product_feed_id,
+            vd.product_ids AS view_detail_product_ids,
+            vd.count AS view_detail_count,
+            c.product_ids AS add_to_cart_product_ids,
+            c.count AS add_to_cart_count
+          FROM
+            view_detail AS vd
+          FULL JOIN add_to_cart AS c
+            ON vd.viewer_id = c.viewer_id
+            AND vd.product_feed_id = c.product_feed_id
+        )
+        SELECT
+          COALESCE(fj.viewer_id, p.viewer_id) AS viewer_id,
+          COALESCE(fj.product_feed_id, p.product_feed_id) AS product_feed_id,
+          view_detail_product_ids,
+          COALESCE(view_detail_count, 0) AS view_detail_count,
+          add_to_cart_product_ids,
+          COALESCE(add_to_cart_count, 0) AS add_to_cart_count,
+          p.product_ids AS purchase_product_ids,
+          COALESCE(p.count, 0) AS purchase_count
+        FROM
+          first_join AS fj
+        FULL JOIN purchase AS p
+          ON fj.viewer_id = p.viewer_id
+          AND fj.product_feed_id = p.product_feed_id
+      )
+    );
+
+  output_bucket: prod-buzzvil-data-lake
+  output_prefix: buzzml/gold/product_user_recent/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzml_g_product_user_recent
+  file_extension: parquet
+
+  database: prod_buzzml
+  table: g_product_user_recent
+  location: s3://prod-buzzvil-data-lake/buzzml/gold/product_user_recent
+
+  partition:
+    name: partition_timestamp
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+    location: s3://prod-buzzvil-data-lake/buzzml/gold/product_user_recent/year={year}/month={month}/day={day}/hour={hour}
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      viewer_id                 VARCHAR(64),
+      product_feed_id           BIGINT,
+      view_detail_product_ids   VARCHAR(65535),
+      view_detail_count         SMALLINT,
+      add_to_cart_product_ids   VARCHAR(65535),
+      add_to_cart_count         SMALLINT,
+      purchase_product_ids      VARCHAR(65535),
+      purchase_count            SMALLINT
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    tblproperties("parquet.compress"="SNAPPY");

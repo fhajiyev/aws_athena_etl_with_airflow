@@ -1,0 +1,85 @@
+---
+pipeline_key: bs_l_allocation_request
+pipeline_type: athena_catalog
+pipeline_dag_configs:
+  start_date: 2020-11-24 07:00:00
+  schedule_interval: "0 * * * *"
+
+downstream_dependencies:
+   - dag_id: athena_process_ba_g_allocation_dau
+     task_id: generate_uuid
+
+athena:
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzscreen"
+  table: l_allocation_request
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/eks/namespace_name=buzzscreen/type=allocation_request"
+  partition:
+    name: partition_timestamp
+    location: "s3://{{{{ var.value.get('server_env', 'prod') }}}}-buzzvil-data-lake/eks/namespace_name=buzzscreen/type=allocation_request/year={year}/month={month}/day={day}/hour={hour}"
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      ----COMMON-FIELDS
+      --log related
+      event_at                           DECIMAL(27,9), -- INT(UNIXTIMESTAMP)
+      log_at                             TIMESTAMP,
+      type                               VARCHAR(64), -- allocation_request
+      api_version                        VARCHAR(64), -- ENUM(v1,v2)
+      --identification
+      app_id                             DECIMAL(27,9), -- BIGINT
+      unit_id                            DECIMAL(27,9), -- BIGINT
+      device_id                          DECIMAL(27,9), -- BIGINT
+      user_id                            VARCHAR(1024),
+      ifa                                VARCHAR(64),
+      --user-specific
+      gender                             VARCHAR(1),
+      membership_days                    DECIMAL(27,9), -- INT
+      mcc                                VARCHAR(3), --VARCHAR, since it can have values like 08 or 001
+      mnc                                VARCHAR(3), --VARCHAR, since it can have values like 08 or 001
+      os_version                         VARCHAR(64), --Semantic version
+      device_name                        VARCHAR(512),
+      sdk_version                        DECIMAL(27,9), -- INT
+      user_agent                         VARCHAR(1024),
+      network_type                       VARCHAR(1024), -- wifi, 4G, etc
+      timezone                           VARCHAR(1024),
+      --request-specific
+      client_ip                          VARCHAR(1024),
+      creative_size                      STRING,
+      revenue_types                      STRING,
+
+      ----V1-ONLY
+      --device-specific
+      carrier                            VARCHAR(1024),
+      default_browser                    VARCHAR(1024),
+      installed_browsers                 STRING,
+      package_name                       VARCHAR(1024),
+      region                             VARCHAR(1024),
+      year_of_birth                      DECIMAL(27,9), -- INT
+      --request-specific
+      is_allocation_test                 BOOLEAN,
+      is_ifa_limit_ad_tracking_enabled   BOOLEAN,
+      is_test                            BOOLEAN,
+      support_remove_after_impression    BOOLEAN,
+
+      ----V2-ONLY
+      --user-specific
+      android_id                         VARCHAR(64),
+      birthday                           VARCHAR(64), -- YYYY-MM-DD
+      relationship                       VARCHAR(1),
+      platform                           VARCHAR(1), -- A, I, W
+      language                           VARCHAR(64),
+      --request-specific
+      latitude                           DECIMAL(27,9),
+      longitude                          DECIMAL(27,9),
+      country                            VARCHAR(1024),
+      cps_category                       VARCHAR(1024),
+      creative_types                     STRING,
+      target_fill                        DECIMAL(27,9), -- INT
+      lineitem_ids                       STRING,
+      is_mock_response                   BOOLEAN
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1'
+    ) LOCATION '{location}';

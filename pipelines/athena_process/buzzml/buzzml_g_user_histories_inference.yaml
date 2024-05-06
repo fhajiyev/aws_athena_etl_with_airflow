@@ -1,0 +1,181 @@
+---
+pipeline_key: buzzml_g_user_histories_inference
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-10-20 00:00:00
+  schedule_interval: "0 0 * * *"
+  max_active_runs: 1
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency-oracle
+    - trigger: sla_miss
+      args:
+        channel: data-emergency-oracle
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: athena_process_buzzml_g_user_histories_training
+    timedelta_hours: 0
+  - dag_id: athena_catalog_buzzml_l_user_crc
+    timedelta_hours: 0
+
+sensor_soft_fail: false
+
+athena:
+  workgroup: oracle
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+          format = 'PARQUET',
+          parquet_compression = 'SNAPPY',
+          external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+      SELECT
+          viewer_id,
+          crc,
+          category,
+          count,
+          ARRAY_JOIN(histories, '|') AS histories
+      FROM (
+          WITH
+          recent AS (
+              SELECT
+                  *,
+                  RANK() OVER (PARTITION BY viewer_id ORDER BY occurred_at DESC) AS past
+              FROM
+                  prod_buzzml.g_user_histories_training
+              WHERE
+                  partition_timestamp > TIMESTAMP '{start_time}' - INTERVAL '28' DAY
+                  AND partition_timestamp <= TIMESTAMP '{start_time}'
+          ),
+          histories AS (
+              SELECT
+                  viewer_id,
+                  CONCAT(
+                      COALESCE(allocation_id, ''), ',',
+                      COALESCE(CAST(lineitem_id AS VARCHAR(32)), ''), ',',
+                      COALESCE(CAST(unit_id AS VARCHAR(32)), ''), ',',
+                      COALESCE(CAST(product_id AS VARCHAR(32)), ''), ',',
+                      COALESCE(CAST(product_feed_id AS VARCHAR(32)), ''), ',',
+                      COALESCE(user_action, ''), ',',
+                      COALESCE(CAST(is_occurred AS VARCHAR(8)), ''), ',',
+                      COALESCE(reward_condition, ''), ',',
+                      COALESCE(occurred_at, '')
+                  ) AS history
+              FROM
+                  recent
+              WHERE
+                  past <= 200
+          ),
+          before_crc AS (
+              SELECT
+                  viewer_id AS viewer_id,
+                  COUNT(*) AS count,
+                  ARRAY_AGG(history) AS histories
+              FROM
+                  histories
+              GROUP BY
+                  viewer_id
+          ),
+          product AS (
+              SELECT
+                  id,
+                  ARBITRARY(category1) AS category
+              FROM
+                  prod_buzzad.l_product
+              WHERE
+                  category1 IS NOT NULL
+              GROUP BY
+                  id
+          ),
+          categories AS (
+              SELECT
+                  recent.viewer_id AS viewer_id,
+                  product.category AS category,
+                  count(*) AS num_product
+              FROM
+                  recent
+              INNER JOIN
+                  product
+              ON
+                  product.id = product_id
+              WHERE
+                  is_occurred = true
+              GROUP BY
+                  viewer_id, category
+          ),
+          ranked_categories AS (
+              SELECT
+                  viewer_id,
+                  category,
+                  RANK() OVER (PARTITION BY viewer_id ORDER BY num_product DESC) AS top
+              FROM
+                  categories
+          ),
+          top_categories AS(
+              SELECT
+                  viewer_id,
+                  category
+              FROM
+                  ranked_categories
+              WHERE
+                  top = 1
+          ),
+          crc AS(
+              SELECT
+                  DISTINCT viewer_id, crc
+              FROM
+                  prod_buzzml.l_user_crc
+              WHERE
+                  partition_timestamp > TIMESTAMP '{start_time}' - INTERVAL '28' DAY
+                  AND partition_timestamp <= TIMESTAMP '{start_time}'
+          )
+          SELECT
+              before_crc.viewer_id,
+              crc.crc AS crc,
+              tc.category,
+              count,
+              histories
+          FROM
+              before_crc
+          INNER JOIN
+              crc
+          ON
+              before_crc.viewer_id = crc.viewer_id
+          LEFT JOIN
+              top_categories AS tc
+          ON
+              before_crc.viewer_id = tc.viewer_id
+      )
+    );
+
+  output_bucket: prod-buzzvil-data-lake
+  output_prefix: buzzml/gold/user_histories_inference/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzml_g_user_histories_inference
+  file_extension: parquet
+
+  database: prod_buzzml
+  table: g_user_histories_inference
+  location: s3://prod-buzzvil-data-lake/buzzml/gold/user_histories_inference
+
+  partition:
+    name: partition_timestamp
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+    location: s3://prod-buzzvil-data-lake/buzzml/gold/user_histories_inference/year={year}/month={month}/day={day}/hour={hour}
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      viewer_id                VARCHAR(64),
+      crc                      SMALLINT,
+      category                 VARCHAR(255),
+      count                    SMALLINT,
+      histories                STRING
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    tblproperties("parquet.compress"="SNAPPY");

@@ -1,0 +1,98 @@
+#  For
+#
+#
+---
+pipeline_key: bs_billing_payout
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: buzzscreen_mysql
+  table_name: billing_payouts
+  fields:
+  - id
+  - unit_id
+  - month_at
+  - buzzvil_payout
+  - publisher_payout
+  - display_revenue
+  - action_revenue
+  - service_revenue
+  - display_adnetwork_revenue
+  - fan_adnetwork_revenue
+  - admob_adnetwork_revenue
+  - exchange_rate
+  - base_reward_cost
+  - display_cost
+  - action_cost
+  - reimbursement_cost
+  - status
+  - is_publish
+  - billing_contract_id
+  - memo
+  - created_at
+  - updated_at
+  increment_key: updated_at
+  increment_key_type: timestamp
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: bs_billing_payout
+  fields:
+  - id
+  - unit_id
+  - month_at
+  - buzzvil_payout
+  - publisher_payout
+  - display_revenue
+  - action_revenue
+  - service_revenue
+  - display_adnetwork_revenue
+  - fan_adnetwork_revenue
+  - admob_adnetwork_revenue
+  - exchange_rate
+  - base_reward_cost
+  - display_cost
+  - action_cost
+  - reimbursement_cost
+  - status
+  - is_publish
+  - billing_contract_id
+  - memo
+  - created_at
+  - updated_at
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                          INT8 NOT NULL ENCODE ZSTD,
+      unit_id                     INT8 NOT NULL ENCODE ZSTD,
+      month_at                    TIMESTAMP NOT NULL ENCODE ZSTD,
+      buzzvil_payout              DECIMAL(27,9) NOT NULL ENCODE ZSTD,
+      publisher_payout            DECIMAL(27,9) NOT NULL ENCODE ZSTD,
+      display_revenue             DECIMAL(27,9) NOT NULL ENCODE ZSTD,
+      action_revenue              DECIMAL(27,9) NOT NULL ENCODE ZSTD,
+      service_revenue             DECIMAL(27,9) NOT NULL ENCODE ZSTD,
+      display_adnetwork_revenue   DECIMAL(27,9) NOT NULL ENCODE ZSTD,
+      fan_adnetwork_revenue       DECIMAL(27,9) NOT NULL ENCODE ZSTD,
+      admob_adnetwork_revenue     DECIMAL(27,9) NOT NULL ENCODE ZSTD,
+      exchange_rate               DECIMAL(10,2) DEFAULT NULL ENCODE ZSTD,
+      base_reward_cost            DECIMAL(27,9) NOT NULL ENCODE ZSTD,
+      display_cost                DECIMAL(27,9) NOT NULL ENCODE ZSTD,
+      action_cost                 DECIMAL(27,9) NOT NULL ENCODE ZSTD,
+      reimbursement_cost          DECIMAL(27,9) NOT NULL ENCODE ZSTD,
+      status                      INT2 NOT NULL ENCODE ZSTD,
+      is_publish                  INT2 NOT NULL ENCODE ZSTD,
+      billing_contract_id         INT8 NOT NULL ENCODE ZSTD,
+      memo                        VARCHAR(1024) ENCODE LZO,
+      created_at                  TIMESTAMP NOT NULL ENCODE ZSTD,
+      updated_at                  TIMESTAMP NOT NULL ENCODE ZSTD,
+      PRIMARY KEY(id)
+    )
+    DISTSTYLE ALL
+    SORTKEY (updated_at);
+  increment_key: updated_at
+  increment_key_type: timestamp
+  unique_key_list:
+  - id

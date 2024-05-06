@@ -1,0 +1,72 @@
+---
+pipeline_key: ba_target_group
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: buzzad_mysql
+  table_name: target_groups
+  fields:
+  - id
+  - name
+  - viewer_id_prefix
+  - profile
+  - owner_id
+  - s3_bucket
+  - s3_key
+  - query_string
+  - is_ready
+  - created_at
+  - updated_at
+  - user_count
+  - enabled
+  - is_processed
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: ba_target_group
+  fields:
+  - id
+  - name
+  - viewer_id_prefix
+  - profile
+  - owner_id
+  - s3_bucket
+  - s3_key
+  - query_string
+  - is_ready
+  - created_at
+  - updated_at
+  - user_count
+  - enabled
+  - is_processed
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                 INT8             NOT NULL,
+      name               VARCHAR(1024)    NOT NULL       ENCODE LZO,
+      viewer_id_prefix   VARCHAR(45)      NOT NULL       ENCODE ZSTD,
+      profile            VARCHAR(45)      DEFAULT NULL   ENCODE ZSTD,
+      owner_id           INT4             DEFAULT NULL   ENCODE ZSTD,
+      s3_bucket          VARCHAR(300)     NOT NULL       ENCODE LZO,
+      s3_key             VARCHAR(300)     DEFAULT NULL   ENCODE LZO,
+      query_string       VARCHAR(16364)   DEFAULT NULL   ENCODE LZO,
+      is_ready           INT2             NOT NULL       ENCODE ZSTD,
+      created_at         TIMESTAMP        NOT NULL       ENCODE ZSTD,
+      updated_at         TIMESTAMP        NOT NULL       ENCODE ZSTD,
+      user_count         INT8             DEFAULT NULL   ENCODE ZSTD,
+      enabled            INT2             NOT NULL       ENCODE ZSTD,
+      is_processed       INT2             NOT NULL       ENCODE ZSTD,
+      PRIMARY KEY(id)
+    )
+    DISTKEY(id)
+    SORTKEY(updated_at)
+    ;
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id

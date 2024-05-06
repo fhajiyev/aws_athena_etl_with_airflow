@@ -1,0 +1,67 @@
+---
+pipeline_key: ba_adnetwork_allocation_fill
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: buzzad_mysql
+  table_name: adnetwork_allocation_fill
+  fields:
+  - id
+  - lineitem_id
+  - hour_at
+  - requested
+  - live
+  - filter_nofill
+  - filter_nocreative
+  - filter_thirdtier
+  - filter_restricted
+  - filter_language
+  - filter_timeout
+  - filter_others
+  - filter_censored
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id
+redshift:
+  table_name: ba_adnetwork_allocation_fill
+  fields:
+  - id
+  - lineitem_id
+  - hour_at
+  - requested
+  - live
+  - filter_nofill
+  - filter_nocreative
+  - filter_thirdtier
+  - filter_restricted
+  - filter_language
+  - filter_timeout
+  - filter_others
+  - filter_censored
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+        id                      INT8 NOT NULL,
+        lineitem_id             INT8 NOT NULL ENCODE ZSTD,
+        hour_at                 TIMESTAMP NOT NULL ENCODE ZSTD,
+        requested               INT4 NOT NULL ENCODE ZSTD,
+        live                    INT4 NOT NULL ENCODE ZSTD,
+        filter_nofill           INT4 NOT NULL ENCODE ZSTD,
+        filter_nocreative       INT4 NOT NULL ENCODE ZSTD,
+        filter_thirdtier        INT4 NOT NULL ENCODE ZSTD,
+        filter_restricted       INT4 NOT NULL ENCODE ZSTD,
+        filter_language         INT4 NOT NULL ENCODE ZSTD,
+        filter_timeout          INT4 NOT NULL ENCODE ZSTD,
+        filter_others           INT4 NOT NULL ENCODE ZSTD,
+        filter_censored         INT4 NOT NULL ENCODE ZSTD,
+        PRIMARY KEY(id)
+    )
+    DISTKEY(lineitem_id)
+    SORTKEY(id);
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id

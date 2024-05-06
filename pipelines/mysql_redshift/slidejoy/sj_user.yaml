@@ -1,0 +1,83 @@
+---
+pipeline_key: sj_user
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: slidejoy_mysql
+  table_name: tbl_user
+  fields:
+  - userId
+  - email
+  - pw
+  - firstName
+  - lastName
+  - gender
+  - birthday
+  - country
+  - locale
+  - relationship
+  - education
+  - confirmed
+  - origin
+  - carrierId
+  - versionCode
+  - admin
+  - creationDate
+  - updateDate
+  increment_key: updateDate
+  increment_key_type: timestamp
+  unique_key_list:
+  - userId
+
+redshift:
+  table_name: sj_user
+  fields:
+  - userId
+  - email
+  - pw
+  - firstName
+  - lastName
+  - gender
+  - birthday
+  - country
+  - locale
+  - relationship
+  - education
+  - confirmed
+  - origin
+  - carrierId
+  - versionCode
+  - admin
+  - creationDate
+  - updateDate
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      userId          VARCHAR(64)    NOT NULL       ENCODE ZSTD,
+      email           VARCHAR(255)   NOT NULL       ENCODE LZO,
+      pw              VARCHAR(255)   DEFAULT NULL   ENCODE LZO,
+      firstName       VARCHAR(255)   DEFAULT NULL   ENCODE LZO,
+      lastName        VARCHAR(255)   DEFAULT NULL   ENCODE LZO,
+      gender          INT2           NOT NULL       ENCODE ZSTD,
+      birthday        TIMESTAMP      DEFAULT NULL   ENCODE ZSTD,
+      country         VARCHAR(4)     DEFAULT NULL   ENCODE ZSTD,
+      locale          VARCHAR(255)   DEFAULT NULL   ENCODE ZSTD,
+      relationship    INT2           NOT NULL       ENCODE ZSTD,
+      education       INT2           NOT NULL       ENCODE ZSTD,
+      confirmed       INT2           NOT NULL       ENCODE ZSTD,
+      origin          INT2           NOT NULL       ENCODE ZSTD,
+      carrierId       VARCHAR(50)    DEFAULT NULL   ENCODE ZSTD,
+      versionCode     INT4           NOT NULL       ENCODE ZSTD,
+      admin           INT8           DEFAULT NULL   ENCODE ZSTD,
+      creationDate    TIMESTAMP      NOT NULL       ENCODE ZSTD,
+      updateDate      TIMESTAMP      NOT NULL       ENCODE ZSTD,
+      PRIMARY KEY(userId)
+    )
+    DISTKEY(userId)
+    SORTKEY(updateDate)
+  increment_key: updateDate
+  increment_key_type: timestamp
+  unique_key_list:
+  - userId

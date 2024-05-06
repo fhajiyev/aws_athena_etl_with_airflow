@@ -1,0 +1,72 @@
+---
+pipeline_key: ba_g_device_fact
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-01-01 00:10:00
+  schedule_interval: "10 * * * *"
+athena:
+  workgroup: buzzad
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+          format = 'JSON',
+          external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+        SELECT
+          viewer_id,
+          unit_id,
+          CASE
+            WHEN year_of_birth < 1900 THEN NULL
+            WHEN year_of_birth > YEAR(TIMESTAMP'{start_time}') THEN NULL
+            ELSE year_of_birth
+          END AS year_of_birth,
+          CASE
+            WHEN sex IN ('m','M') THEN 'M'
+            WHEN sex IN ('f','F','W') THEN 'F'
+            ELSE NULL
+          END AS sex,
+          carrier,
+          region,
+          platform,
+          country,
+          device_name,
+          time
+        FROM
+            prod_buzzad.l_device_fact
+        WHERE
+
+            partition_timestamp >= TIMESTAMP'{start_time}' AND
+            partition_timestamp < TIMESTAMP'{end_time}'
+    );
+  output_bucket: prod-buzzvil-data-lake
+  output_prefix: buzzad/gold/device_fact/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzad_gold_device_fact
+  file_extension: parquet
+
+  database: prod_buzzad
+  table: g_device_fact
+  location: s3://prod-buzzvil-data-lake/buzzad/gold/device_fact
+  partition:
+    name: partition_timestamp
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+    location: s3://prod-buzzvil-data-lake/buzzad/gold/device_fact/year={year}/month={month}/day={day}/hour={hour}
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      viewer_id                VARCHAR(64),
+      unit_id                  BIGINT,
+      year_of_birth            INT,
+      sex                      VARCHAR(1),
+      carrier                  VARCHAR(64),
+      region                   VARCHAR(64),
+      platform                 VARCHAR(1),
+      country                  VARCHAR(2),
+      device_name              VARCHAR(64),
+      time                     TIMESTAMP
+    )
+    PARTITIONED BY (partition_timestamp TIMESTAMP)
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'ignore.malformed.json'='true'
+    )
+    LOCATION '{location}';

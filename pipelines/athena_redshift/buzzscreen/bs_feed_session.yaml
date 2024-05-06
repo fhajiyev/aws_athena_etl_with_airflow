@@ -1,0 +1,99 @@
+---
+pipeline_key: bs_feed_session
+pipeline_type: athena_redshift_sync
+pipeline_dag_configs:
+  start_date: 2019-01-01 00:00:00
+  schedule_interval: "@hourly"
+athena:
+  table_name: bi_event
+  partition:
+    location: s3://prod-buzzvil-firehose/buzzinsight/event/
+    name: partition_timestamp
+    type: hourly
+  process_query: |
+    SELECT
+      app_id,
+      version,
+      user_id,
+      sub_user_id,
+      unit_id,
+      ifa,
+      JSON_EXTRACT_SCALAR(attributes, '$.report_ratio') AS report_ratio,
+      COALESCE(JSON_EXTRACT_SCALAR(attributes, '$.session_id'), CAST(0 AS VARCHAR)) AS session_id,
+      COALESCE(JSON_EXTRACT_SCALAR(attributes, '$.duration'), CAST(0 AS VARCHAR)) AS duration,
+      created_at
+    FROM
+      bi_event
+    WHERE
+      partition_timestamp >= TIMESTAMP'{start_time}' AND
+      partition_timestamp < TIMESTAMP'{end_time}' AND
+      type = 'dcp' AND
+      name = 'feed_session'
+  output_bucket: buzzvil-athena
+  output_prefix: prod/buzzscreen/feed_session
+  file_key: bs_feed_session
+
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE spectrum.bi_event (
+      app_id             INT8,
+      unit_id            INT8,
+      type               VARCHAR(255),
+      name               VARCHAR(255),
+      created_at         VARCHAR(255),
+      version            INT4,
+      user_id            VARCHAR(255),
+      sub_user_id        VARCHAR(255),
+      guid               VARCHAR(255),
+      ifa                VARCHAR(255),
+      sex                VARCHAR(255),
+      year_of_birth      INT4,
+      carrier            VARCHAR(255),
+      device_name        VARCHAR(255),
+      device_os          VARCHAR(255),
+      device_resolution  VARCHAR(255),
+      ip                 VARCHAR(255),
+      ip_country         VARCHAR(255),
+      attributes         VARCHAR(65535)
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1'
+    ) LOCATION 's3://prod-buzzvil-firehose/buzzinsight/event/';
+redshift:
+  table_name: bs_feed_session
+  fields:
+  - app_id
+  - version
+  - user_id
+  - sub_user_id
+  - unit_id
+  - ifa
+  - report_ratio
+  - session_id
+  - duration
+  - created_at
+  unique_key_list:
+  - session_id
+  deduplicate_key_list:
+  - session_id
+  increment_key: created_at
+  increment_key_type: timestamp
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      app_id              INT8           NOT NULL   ENCODE ZSTD,
+      version             INT4           NOT NULL   ENCODE ZSTD,
+      user_id             VARCHAR(255)   NULL       ENCODE ZSTD,
+      sub_user_id         VARCHAR(255)   NULL       ENCODE ZSTD,
+      unit_id             INT8           NULL       ENCODE ZSTD,
+      ifa                 VARCHAR(64)    NULL       ENCODE ZSTD,
+      report_ratio        DECIMAL(4,2)   NULL       ENCODE ZSTD,
+      session_id          VARCHAR(64)    NULL       ENCODE ZSTD,
+      duration            INT8           NULL       ENCODE ZSTD,
+      created_at          TIMESTAMP      NOT NULL   ENCODE ZSTD
+    )
+    DISTKEY(session_id)
+    SORTKEY(created_at, user_id)
+    ;

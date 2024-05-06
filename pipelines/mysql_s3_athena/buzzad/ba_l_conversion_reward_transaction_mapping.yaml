@@ -1,0 +1,46 @@
+# CREATE TABLE `raw_data_conversion_reward_transaction_mapping` (
+#   `id` int(11) NOT NULL AUTO_INCREMENT,
+#   `raw_data_conversion_id` bigint(20) NOT NULL,
+#   `reward_transaction_id` varchar(100) NOT NULL,
+#   PRIMARY KEY (`id`),
+#   UNIQUE KEY `raw_data_conversion_reward__raw_data_conversion_id_53383e16_uniq` (`raw_data_conversion_id`)
+# ) ENGINE=InnoDB AUTO_INCREMENT=26582 DEFAULT CHARSET=utf8;
+---
+pipeline_key: ba_l_conversion_reward_transaction_mapping
+pipeline_type: mysql_s3_athena
+pipeline_dag_configs:
+  start_date: 2020-12-01 00:00:00
+  schedule_interval: "0 * * * *"
+mysql:
+  conn_id: buzzad_mysql
+  table_name: raw_data_conversion_reward_transaction_mapping
+  increment_key: created_at
+  increment_key_type: timestamp
+  fields:
+  - id
+  - raw_data_conversion_id
+  - reward_transaction_id
+  - created_at
+s3:
+  bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  prefix: buzzad/landing/conversion_reward_transaction_mapping/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzad-conversion-reward-transaction-mapping
+  data_format: parquet
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id                      BIGINT       ,
+      raw_data_conversion_id  BIGINT       ,
+      reward_transaction_id   VARCHAR(100) ,
+      created_at              TIMESTAMP
+    )
+    PARTITIONED BY (partition_timestamp TIMESTAMP)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY");
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzad"
+  table: l_conversion_reward_transaction_mapping
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/buzzad/landing/conversion_reward_transaction_mapping"
+  partition:
+    name: partition_timestamp
+    type: hourly

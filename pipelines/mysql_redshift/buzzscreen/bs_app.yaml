@@ -1,0 +1,70 @@
+#  For
+#
+#
+---
+pipeline_key: bs_app
+pipeline_type: mysql_redshift
+incremental_sync: False
+
+mysql:
+  conn_id: buzzscreen_mysql
+  table_name: apps
+  fields:
+  - id
+  - uuid
+  - name
+  - platform
+  - organization_id
+  - is_enabled
+  - created_at
+  - updated_at
+  - category
+  - latest_app_version
+  - is_test
+  - use_external_point
+
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: bs_app
+  fields:
+  - id
+  - uuid
+  - name
+  - platform
+  - organization_id
+  - is_enabled
+  - created_at
+  - updated_at
+  - category
+  - latest_app_version
+  - is_test
+  - use_external_point
+  copy_method: replace
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                   INT8           NOT NULL,
+      uuid                 VARCHAR(45)    NOT NULL       ENCODE ZSTD,
+      name                 VARCHAR(150)   NOT NULL       ENCODE ZSTD,
+      platform             VARCHAR(1)     NOT NULL       ENCODE ZSTD,
+      organization_id      INT4           NOT NULL       ENCODE AZ64,
+      is_enabled           INT2           NOT NULL       ENCODE AZ64,
+      created_at           TIMESTAMP      NOT NULL       ENCODE AZ64,
+      updated_at           TIMESTAMP      NOT NULL       ENCODE AZ64,
+      category             VARCHAR(255)   DEFAULT NULL   ENCODE ZSTD,
+      latest_app_version   INT4           DEFAULT NULL   ENCODE AZ64,
+      is_test              INT2           NOT NULL       ENCODE AZ64,
+      use_external_point   INT2           NOT NULL       ENCODE AZ64,
+      PRIMARY KEY(id)
+    )
+    DISTSTYLE ALL
+    SORTKEY(id)
+    ;
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id

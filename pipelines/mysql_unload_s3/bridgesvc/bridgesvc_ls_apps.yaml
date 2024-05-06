@@ -1,0 +1,71 @@
+# MYSQL CREATE TABLE SYNTAX
+# CREATE TABLE `apps` (
+#   `id` int(11) NOT NULL AUTO_INCREMENT,
+#   `app_id` varchar(100) NOT NULL,
+#   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+#   `updated_at` datetime DEFAULT CURRENT_TIMESTAMP,
+#   `icon_url` varchar(100) NOT NULL,
+#   `name` varchar(100) NOT NULL,
+#   `logo_url` varchar(100) NOT NULL,
+#   `primary_color` varchar(100) NOT NULL,
+#   `secondary_color` varchar(100) NOT NULL,
+#   `native_unit_id` varchar(100) DEFAULT NULL,
+#   `feed_unit_id` varchar(100) DEFAULT NULL,
+#   PRIMARY KEY (`id`),
+#   UNIQUE KEY `app_id` (`app_id`)
+# ) ENGINE=InnoDB AUTO_INCREMENT=17 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+---
+pipeline_key: bridgesvc_ls_apps
+pipeline_type: mysql_unload_s3
+pipeline_dag_configs:
+  start_date: 2020-10-14 17:00:00
+  schedule_interval: "0 17 * * *"
+mysql:
+  conn_id: bridgesvc_mysql
+  table_name: apps
+  increment_key: id
+  increment_key_type: dump
+  fields:
+  - id
+  - app_id
+  - created_at
+  - updated_at
+  - icon_url
+  - name
+  - logo_url
+  - primary_color
+  - secondary_color
+  - native_unit_id
+  - feed_unit_id
+s3:
+  bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  prefix: bridgesvc/landing_snapshot/apps/year={year}/month={month}/day={day}/hour={hour}
+  file_key: bridgesvc_ls_apps
+  data_format: parquet
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id               BIGINT,
+      app_id           VARCHAR(100),
+      created_at       TIMESTAMP,
+      updated_at       TIMESTAMP,
+      icon_url         VARCHAR(8192),
+      name             VARCHAR(255),
+      logo_url         VARCHAR(8192),
+      primary_color    VARCHAR(255),
+      secondary_color  VARCHAR(255),
+      native_unit_id   VARCHAR(255),
+      feed_unit_id     VARCHAR(255)
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY");
+  database: "{{ var.value.get('server_env', 'prod') }}_bridgesvc"
+  table: ls_apps
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/bridgesvc/landing_snapshot/apps"
+  partition:
+    key: partition_timestamp
+    value: "{{execution_date.strftime('%Y-%m-%d %H:00:00')}}"
+    subdir: "year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}"
+

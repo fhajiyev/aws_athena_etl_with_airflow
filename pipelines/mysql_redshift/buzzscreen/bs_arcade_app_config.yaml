@@ -1,0 +1,47 @@
+#  For 
+# 
+# 
+---
+pipeline_key: bs_arcade_app_config
+pipeline_type: mysql_redshift
+incremental_sync: False
+
+mysql:
+  conn_id: buzzscreen_mysql
+  table_name: arcade_app_configs
+  fields:
+  - id
+  - created_at
+  - chances
+  - period_hour
+  - unit_id
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: bs_arcade_app_config
+  fields:
+  - id
+  - created_at
+  - chances
+  - period_hour
+  - unit_id
+  copy_method: replace
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id            INT8        NOT NULL   ENCODE ZSTD,
+      created_at    TIMESTAMP   NOT NULL   ENCODE ZSTD,
+      chances       INT4        NOT NULL   ENCODE ZSTD,
+      period_hour   INT4        NOT NULL   ENCODE ZSTD,
+      unit_id       INT8        NOT NULL   ENCODE ZSTD,
+      PRIMARY KEY(id)
+    )
+    DISTSTYLE ALL
+    ;
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id

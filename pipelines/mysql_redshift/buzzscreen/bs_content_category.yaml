@@ -1,0 +1,69 @@
+#  For
+#
+#
+---
+pipeline_key: bs_content_category
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: buzzscreen_mysql
+  table_name: content_category
+  fields:
+  - id
+  - content_id
+  - source
+  - level1
+  - level2
+  - level3
+  - level4
+  - level5
+  - score
+  - analyzed_text_length
+  - language
+  - created_at
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: bs_content_category
+  fields:
+  - id
+  - content_id
+  - source
+  - level1
+  - level2
+  - level3
+  - level4
+  - level5
+  - score
+  - analyzed_text_length
+  - language
+  - created_at
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                      INT8            NOT NULL        ENCODE ZSTD,
+      content_id              INT8            NOT NULL        ENCODE ZSTD,
+      source                  VARCHAR(255)    NOT NULL        ENCODE ZSTD,
+      level1                  VARCHAR(255)    NOT NULL        ENCODE ZSTD,
+      level2                  VARCHAR(255)    DEFAULT NULL    ENCODE ZSTD,
+      level3                  VARCHAR(255)    DEFAULT NULL    ENCODE ZSTD,
+      level4                  VARCHAR(255)    DEFAULT NULL    ENCODE ZSTD,
+      level5                  VARCHAR(255)    DEFAULT NULL    ENCODE ZSTD,
+      score                   FLOAT           NOT NULL        ENCODE ZSTD,
+      analyzed_text_length    INT4            NOT NULL        ENCODE ZSTD,
+      language                VARCHAR(31)     NOT NULL        ENCODE ZSTD,
+      created_at              TIMESTAMP       NOT NULL        ENCODE ZSTD,
+      PRIMARY KEY(id)
+    )
+    DISTKEY (content_id)
+    SORTKEY (id)
+    ;
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id

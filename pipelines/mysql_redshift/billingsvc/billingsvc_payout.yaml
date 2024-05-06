@@ -1,0 +1,64 @@
+---
+pipeline_key: billingsvc_payout
+pipeline_type: mysql_redshift
+incremental_sync: False
+
+mysql:
+  conn_id: billingsvc_mysql
+  table_name: payout
+  increment_key: id
+  increment_key_type: numeric
+  fields:
+  - id
+  - uuid
+  - local_date
+  - unit_contract_uuid
+  - unit_id
+  - payout_buzzvil
+  - payout_owner
+  - status
+  - updated_at
+  - created_at
+  - unit_finance_id
+  - access
+  unique_key_list:
+  - id
+redshift:
+  table_name: billingsvc_payout
+  fields:
+  - id
+  - uuid
+  - local_date
+  - unit_contract_uuid
+  - unit_id
+  - payout_buzzvil
+  - payout_owner
+  - status
+  - updated_at
+  - created_at
+  - unit_finance_id
+  - access
+  copy_method: replace
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                   BIGINT         ENCODE AZ64,
+      uuid                 VARCHAR(64)    ENCODE ZSTD,
+      local_date           TIMESTAMP      ENCODE AZ64,
+      unit_contract_uuid   VARCHAR(64)    ENCODE ZSTD,
+      unit_id              BIGINT         ENCODE AZ64,
+      payout_buzzvil       DECIMAL(27,9)  ENCODE AZ64,
+      payout_owner         DECIMAL(27,9)  ENCODE AZ64,
+      status               INT            ENCODE AZ64,
+      updated_at           TIMESTAMP      ENCODE AZ64,
+      created_at           TIMESTAMP      ENCODE AZ64,
+      unit_finance_id      BIGINT         ENCODE AZ64,
+      access               INT            ENCODE AZ64
+    )
+    DISTKEY(unit_id)
+    SORTKEY(id)
+    ;
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id

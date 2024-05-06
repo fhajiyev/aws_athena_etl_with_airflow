@@ -1,0 +1,57 @@
+#  For
+#
+#
+---
+pipeline_key: bp_barcode
+pipeline_type: mysql_redshift
+incremental_sync: False
+
+mysql:
+  conn_id: buzzstore_mysql
+  table_name: barcodes
+  fields:
+  - id
+  - barcode
+  - order_id
+  - is_used
+  - expire_at
+  - created_at
+  - updated_at
+  - product_id
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: bp_barcode
+  fields:
+  - id
+  - barcode
+  - order_id
+  - is_used
+  - expire_at
+  - created_at
+  - updated_at
+  - product_id
+  copy_method: replace
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id               INT8           NOT NULL       ENCODE ZSTD,
+      barcode          VARCHAR(255)   NOT NULL       ENCODE LZO,
+      order_id         INT8           DEFAULT NULL   ENCODE ZSTD,
+      is_used          INT2           NOT NULL       ENCODE ZSTD,
+      expire_at        TIMESTAMP                     ENCODE ZSTD,
+      created_at       TIMESTAMP      NOT NULL       ENCODE ZSTD,
+      updated_at       TIMESTAMP      NOT NULL       ENCODE ZSTD,
+      product_id       INT8           DEFAULT NULL   ENCODE ZSTD,
+      PRIMARY KEY(id)
+    )
+    DISTKEY (id)
+    SORTKEY (updated_at)
+    ;
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id

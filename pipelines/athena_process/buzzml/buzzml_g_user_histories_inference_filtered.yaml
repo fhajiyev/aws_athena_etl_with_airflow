@@ -1,0 +1,83 @@
+---
+pipeline_key: buzzml_g_user_histories_inference_filtered
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-10-12 00:00:00
+  schedule_interval: "0 * * * *"
+  max_active_runs: 1
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency-oracle
+    - trigger: sla_miss
+      args:
+        channel: data-emergency-oracle
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: athena_process_buzzml_g_user_histories_inference
+    timedelta_hours: 0
+
+sensor_soft_fail: false
+
+athena:
+  workgroup: oracle
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+          format = 'JSON',
+          external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+      SELECT
+          duplicated.viewer_id,
+          duplicated.category,
+          duplicated.count,
+          duplicated.histories
+      FROM (
+          SELECT
+              *,
+              ROW_NUMBER() OVER (PARTITION BY viewer_id) AS row
+          FROM
+              prod_buzzml.g_user_histories_inference
+          WHERE
+              partition_timestamp = TIMESTAMP '{start_time}'
+      ) AS duplicated
+      INNER JOIN
+          prod_buzzml.abtest_ad_ctr_ifas AS target
+      ON
+          target.viewer_id = duplicated.viewer_id
+      WHERE
+          duplicated.row = 1
+    );
+
+  output_bucket: prod-buzzvil-data-lake
+  output_prefix: buzzml/gold/user_histories_inference_filtered/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzml_g_user_histories_inference_filtered
+  file_extension: gz
+
+  database: prod_buzzml
+  table: g_user_histories_inference_filtered
+  location: s3://prod-buzzvil-data-lake/buzzml/gold/user_histories_inference_filtered
+
+  partition:
+    name: partition_timestamp
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+    location: s3://prod-buzzvil-data-lake/buzzml/gold/user_histories_inference_filtered/year={year}/month={month}/day={day}/hour={hour}
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      viewer_id                VARCHAR(64),
+      category                 VARCHAR(255),
+      count                    SMALLINT,
+      histories                STRING
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'ignore.malformed.json'='true'
+    )
+    LOCATION '{location}';

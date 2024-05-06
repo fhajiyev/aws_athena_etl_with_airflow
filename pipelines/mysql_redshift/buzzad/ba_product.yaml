@@ -1,0 +1,152 @@
+---
+pipeline_key: ba_product
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: buzzad_mysql
+  table_name: products
+  fields:
+  - id
+  - code
+  - name
+  - price
+  - currency
+  - landing_url
+  - image_url
+  - original_image_url
+  - is_active
+  - normal_price
+  - description
+  - extra_image_url
+  - original_extra_image_url
+  - extra_image_width
+  - extra_image_height
+  - category
+  - category1
+  - category2
+  - category3
+  - category4
+  - google_product_category
+  - naver_product_category
+  - is_popular
+  - brand
+  - model
+  - manufacturer
+  - shipping
+  - discount_amount
+  - discount_unit
+  - discount_description
+  - age_group
+  - gender
+  - custom_group
+  - last_update_time
+  - created_at
+  - updated_at
+  - product_feed_id
+  - digest
+  - extra_data
+  - save_amount
+  - save_unit
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: ba_product
+  fields:
+  - id
+  - code
+  - name
+  - price
+  - currency
+  - landing_url
+  - image_url
+  - original_image_url
+  - is_active
+  - normal_price
+  - description
+  - extra_image_url
+  - original_extra_image_url
+  - extra_image_width
+  - extra_image_height
+  - category
+  - category1
+  - category2
+  - category3
+  - category4
+  - google_product_category
+  - naver_product_category
+  - is_popular
+  - brand
+  - model
+  - manufacturer
+  - shipping
+  - discount_amount
+  - discount_unit
+  - discount_description
+  - age_group
+  - gender
+  - custom_group
+  - last_update_time
+  - created_at
+  - updated_at
+  - product_feed_id
+  - digest
+  - extra_data
+  - save_amount
+  - save_unit
+  copy_method: upsert
+  copy_option: csv_max_error_1000
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                         INT8            NOT NULL,
+      code                       VARCHAR(255)    DEFAULT NULL   ENCODE ZSTD,
+      name                       VARCHAR(1024)   DEFAULT NULL   ENCODE LZO,
+      price                      DECIMAL(18,9)   DEFAULT NULL   ENCODE ZSTD,
+      currency                   VARCHAR(3)      DEFAULT NULL   ENCODE ZSTD,
+      landing_url                VARCHAR(2048)   DEFAULT NULL   ENCODE LZO,
+      image_url                  VARCHAR(512)    DEFAULT NULL   ENCODE LZO,
+      original_image_url         VARCHAR(2048)   DEFAULT NULL   ENCODE LZO,
+      is_active                  INT2            DEFAULT NULL   ENCODE ZSTD,
+      normal_price               DECIMAL(18,9)   DEFAULT NULL   ENCODE ZSTD,
+      description                VARCHAR(4096)   DEFAULT NULL   ENCODE LZO,
+      extra_image_url            VARCHAR(1024)   DEFAULT NULL   ENCODE LZO,
+      original_extra_image_url   VARCHAR(2048)   DEFAULT NULL   ENCODE LZO,
+      extra_image_width          INT4            DEFAULT NULL   ENCODE ZSTD,
+      extra_image_height         INT4            DEFAULT NULL   ENCODE ZSTD,
+      category                   VARCHAR(1024)   DEFAULT NULL   ENCODE LZO,
+      category1                  VARCHAR(255)    DEFAULT NULL   ENCODE LZO,
+      category2                  VARCHAR(255)    DEFAULT NULL   ENCODE LZO,
+      category3                  VARCHAR(255)    DEFAULT NULL   ENCODE LZO,
+      category4                  VARCHAR(255)    DEFAULT NULL   ENCODE LZO,
+      google_product_category    VARCHAR(1024)   DEFAULT NULL   ENCODE LZO,
+      naver_product_category     VARCHAR(1024)   DEFAULT NULL   ENCODE LZO,
+      is_popular                 INT2            DEFAULT NULL   ENCODE ZSTD,
+      brand                      VARCHAR(255)    DEFAULT NULL   ENCODE LZO,
+      model                      VARCHAR(255)    DEFAULT NULL   ENCODE LZO,
+      manufacturer               VARCHAR(255)    DEFAULT NULL   ENCODE LZO,
+      shipping                   DECIMAL(18,9)   DEFAULT NULL   ENCODE ZSTD,
+      discount_amount            DECIMAL(18,9)   DEFAULT NULL   ENCODE ZSTD,
+      discount_unit              VARCHAR(3)      DEFAULT NULL   ENCODE ZSTD,
+      discount_description       VARCHAR(2048)   DEFAULT NULL   ENCODE LZO,
+      age_group                  VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+      gender                     VARCHAR(64)     DEFAULT NULL   ENCODE ZSTD,
+      custom_group               VARCHAR(255)    DEFAULT NULL   ENCODE LZO,
+      last_update_time           TIMESTAMP       DEFAULT NULL   ENCODE ZSTD,
+      created_at                 TIMESTAMP       DEFAULT NULL   ENCODE ZSTD,
+      updated_at                 TIMESTAMP       DEFAULT NULL   ENCODE ZSTD,
+      product_feed_id            INT8            DEFAULT NULL   ENCODE ZSTD,
+      digest                     VARCHAR(255)    DEFAULT NULL   ENCODE LZO,
+      extra_data                 VARCHAR(2048)   DEFAULT NULL   ENCODE LZO,
+      save_amount                DECIMAL(18,9)   DEFAULT NULL   ENCODE ZSTD,
+      save_unit                  VARCHAR(3)      DEFAULT NULL   ENCODE ZSTD
+    )
+    DISTKEY(product_feed_id)
+    SORTKEY(id)
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id

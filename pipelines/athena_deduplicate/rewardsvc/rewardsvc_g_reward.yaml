@@ -1,0 +1,95 @@
+# Schema mappings are from the following
+# https://github.com/Buzzvil/rewardsvc/blob/master/internal/pkg/reward/rewardrepo/model.go
+---
+pipeline_key: rewardsvc_g_reward
+pipeline_type: athena_deduplicate
+pipeline_dag_configs:
+  start_date: 2020-05-06 02:00:00
+  schedule_interval: "@hourly"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency
+    - trigger: sla_miss
+      args:
+        channel: data-emergency
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: athena_process_rewardsvc_g_stream_reward
+    timedelta_hours: 0
+
+downstream_dependencies:
+  - dag_id: athena_view_rewardsvc_g_vw_reward
+    task_id: generate_uuid
+  - dag_id: check_data_rewardsvc_g_reward_deduplicated
+    task_id: generate_uuid
+
+athena:
+  workgroup: rewardsvc
+  deduplication:
+    type: version_string
+    scan_days: 7
+    original_table: g_stream_reward
+    fields:
+      - account_id
+      - version
+      - transaction_id
+      - app_id
+      - publisher_user_id
+      - resource_id
+      - resource_type
+      - event_type
+      - amount
+      - reward_status
+      - created_at
+      - updated_at
+      - extra
+      - scatter
+      - unit_id
+      - partition_timestamp
+    unique_fields:
+      - account_id
+      - version
+    updated_field: reward_status
+    updated_values:
+      - pending
+      - success
+  output_bucket: "{env}-buzzvil-data-lake"
+  output_prefix: rewardsvc/gold/reward/year={year}/month={month}/day={day}/hour={hour}
+  skip_on_empty_query_result: false
+  file_key: rewardsvc_g_reward
+  file_extension: parquet
+
+  database: "{env}_rewardsvc"
+  table: g_reward
+  location: s3://{env}-buzzvil-data-lake/rewardsvc/gold/reward
+  partition:
+    key: partition_timestamp
+    subdir: year={year}/month={month}/day={day}/hour={hour}
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      account_id          BIGINT,
+      version             BIGINT,
+      transaction_id      VARCHAR(72),
+      app_id              BIGINT,
+      publisher_user_id   VARCHAR(100),
+      resource_id         BIGINT,
+      resource_type       VARCHAR(16),
+      event_type          VARCHAR(16),
+      amount              BIGINT,
+      reward_status       VARCHAR(16),
+      created_at          TIMESTAMP,
+      updated_at          TIMESTAMP,
+      extra               VARCHAR(256),
+      scatter             BIGINT,
+      unit_id             BIGINT
+    )
+    PARTITIONED BY ({partition_key} timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    tblproperties("parquet.compress"="SNAPPY");

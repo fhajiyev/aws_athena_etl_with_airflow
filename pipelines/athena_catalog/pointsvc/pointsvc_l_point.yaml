@@ -1,0 +1,73 @@
+# Schema mappings are from the following
+# https://github.com/Buzzvil/pointsvc/blob/master/internal/pkg/point/repo/model.go
+# Notes
+# L40 : sequencenumber는 number이지만 bigint로 담을수 없음 regex: \d{21,40}
+#       https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_streams_StreamRecord.html
+---
+pipeline_key: pointsvc_l_point
+pipeline_type: athena_catalog
+pipeline_dag_configs:
+  start_date: 2020-04-29 00:00:00
+  schedule_interval: "0 * * * *"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency
+    - trigger: sla_miss
+      args:
+        channel: data-emergency
+    - trigger: retry
+      args:
+        channel: data-warning
+
+downstream_dependencies:
+  - dag_id: athena_process_pointsvc_g_point
+    task_id: generate_uuid
+
+athena:
+  database: "{{ var.value.get('server_env', 'prod') }}_pointsvc"
+  table: l_point
+  location: s3://prod-buzzvil-data-lake/pointsvc/landing/point
+  partition:
+    name: partition_timestamp
+    location: s3://prod-buzzvil-data-lake/pointsvc/landing/point/{year}/{month}/{day}/{hour}
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      eventname                   string,
+      sequencenumber              string,
+      approximatecreationdatetime timestamp,
+      newimage struct<
+          rid:struct<n:string>,
+          rt:struct<s:string>,
+          e:struct<s:string>,
+
+          rdid:struct<s:string>,
+          rdt:struct<s:string>,
+          rs:struct<s:string>,
+
+          a:struct<n:string>,
+          ds:struct<n:string>,
+          ws:struct<n:string>,
+
+          acid:struct<n:string>,
+          apid:struct<n:string>,
+          puid:struct<s:string>,
+
+          rtid:struct<s:string>,
+          uid:struct<n:string>,
+          ext:struct<s:string>,
+          ca:struct<n:string>,
+          ua:struct<n:string>,
+
+          v:struct<n:string>,
+          sc:struct<n:string>
+      >
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1'
+    ) LOCATION '{location}';

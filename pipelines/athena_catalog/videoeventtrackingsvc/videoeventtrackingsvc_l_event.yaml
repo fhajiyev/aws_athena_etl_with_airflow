@@ -1,0 +1,30 @@
+---
+pipeline_key: videoeventtrackingsvc_l_event
+pipeline_type: athena_catalog
+pipeline_dag_configs:
+  start_date: 2020-03-13 00:00:00
+  schedule_interval: "0 * * * *"
+
+athena:
+  database: prod_videoeventtrackingsvc
+  table: l_event
+  location: s3://prod-buzzvil-firehose/buzzad/video_event_log
+  partition:
+    name: partition_timestamp
+    location: s3://prod-buzzvil-firehose/buzzad/video_event_log/{year}/{month}/{day}/{hour}
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      lineitem_id           BIGINT,
+      unit_id               BIGINT,
+      event                 VARCHAR(20),
+      created_at            VARCHAR(40),
+      allocation_id         VARCHAR(40)
+    )
+    PARTITIONED BY (partition_timestamp TIMESTAMP)
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'ignore.malformed.json'='true'
+    )
+    LOCATION '{location}';

@@ -1,0 +1,80 @@
+# The dag validates deduplicated table buzzscreen.g_point for buzzscreen.g_stream_point
+# augend: If g_point has vanished records from g_stream_point, augend value has positive integer 
+# addend: If g_point has duplicated records per unique keys (device_id, version), addend value has positive integer
+# augend + addend must be zero
+---
+pipeline_key: bs_g_point_deduplicated
+pipeline_type: check_data
+pipeline_dag_configs:
+  start_date: 2020-07-28 11:00:00
+  schedule_interval: "0 * * * *"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: airflow-check-monitoring
+    - trigger: sla_miss
+      args:
+        channel: airflow-check-monitoring
+
+upstream_dependencies:
+  - dag_id: athena_deduplicate_bs_g_point
+    timedelta_hours: 0
+
+# table has no vanished record
+augend:
+  data_source:
+    type: athena
+    database: "{env}_buzzscreen"
+    workgroup: buzzscreen
+  query: |
+    SELECT
+      COUNT(*) AS result
+    FROM
+      {env}_buzzscreen.g_stream_point P
+      LEFT OUTER JOIN {env}_buzzscreen.g_point D
+          ON P.device_id = D.device_id AND P.version = D.version
+    WHERE
+      P.partition_timestamp >= TIMESTAMP '{start_time}' - interval '7' day - interval '1' hour -- stream has late arrival issue
+      AND P.partition_timestamp < TIMESTAMP '{end_time}' - interval '7' day + interval '1' hour
+      AND P.created_at >= TIMESTAMP '{start_time}' - interval '7' day
+      AND P.created_at < TIMESTAMP '{end_time}' - interval '7' day
+
+      AND D.partition_timestamp >= TIMESTAMP '{start_time}' - interval '7' day
+      AND D.partition_timestamp < TIMESTAMP '{end_time}' - interval '7' day
+      AND D.created_at >= TIMESTAMP '{start_time}' - interval '7' day
+      AND D.created_at < TIMESTAMP '{end_time}' - interval '7' day
+
+      AND D.device_id is NULL
+      AND D.version is NULL
+
+# well deduplicated
+addend:
+  data_source:
+    type: athena
+    database: "{env}_buzzscreen"
+    workgroup: buzzscreen
+  query: |
+    SELECT
+      SUM(P.cnt) as result  -- sum of duplicated records in dedup table
+    FROM (
+      SELECT
+        device_id,
+        version,
+        COUNT(*) as cnt
+      FROM
+        {env}_buzzscreen.g_point
+      WHERE
+        partition_timestamp >= TIMESTAMP '{start_time}' - interval '7' day
+        AND partition_timestamp <  TIMESTAMP '{end_time}' - interval '7' day
+        AND created_at >= TIMESTAMP '{start_time}' - interval '7' day
+        AND created_at < TIMESTAMP '{end_time}' - interval '7' day
+      GROUP BY 1, 2
+      HAVING COUNT(*) > 1
+    ) AS P
+  default: 0
+
+comparison:
+  operator: eq
+  threshold: 0

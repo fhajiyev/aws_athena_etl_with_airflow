@@ -1,0 +1,87 @@
+#  For
+#
+#
+---
+pipeline_key: ba_l_conversion
+pipeline_type: mysql_s3_athena
+pipeline_dag_configs:
+  start_date: 2019-11-01 00:00:00
+  schedule_interval: "0 * * * *"
+mysql:
+  conn_id: buzzad_mysql
+  table_name: raw_data_conversions
+  increment_key: created_at
+  increment_key_type: timestamp
+  fields:
+    - id
+    - viewer_id
+    - order_id
+    - lineitem_id
+    - unit_id
+    - campaign_id
+    - campaign_name
+    - device_os
+    - created_at
+    - adnetwork_id
+    - seq_id
+    - sub_type
+    - payout
+    - currency
+    - unit_payout
+    - unit_currency
+    - ip
+    - raw_data_click_id
+    - updated_at
+    - is_succeeded
+    - reward
+    - sales
+    - unit_sales
+    - is_forced_conversion
+    - country
+s3:
+  bucket: prod-buzzvil-data-lake
+  prefix: buzzad/landing/conversion/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzad-conversion
+  data_format: json
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id                      BIGINT       ,
+      viewer_id               VARCHAR(100) ,
+      order_id                BIGINT       ,
+      lineitem_id             BIGINT       ,
+      unit_id                 BIGINT       ,
+      campaign_id             VARCHAR(100) ,
+      campaign_name           VARCHAR(100) ,
+      device_os               VARCHAR(30)  ,
+      created_at              TIMESTAMP    ,
+      adnetwork_id            BIGINT       ,
+      seq_id                  VARCHAR(100) ,
+      sub_type                VARCHAR(10)  ,
+      payout                  BIGINT       ,
+      currency                VARCHAR(10)  ,
+      unit_payout             BIGINT       ,
+      unit_currency           VARCHAR(10)  ,
+      ip                      BIGINT       ,
+      raw_data_click_id       BIGINT       ,
+      updated_at              TIMESTAMP    ,
+      is_succeeded            VARCHAR(1)   ,
+      reward                  BIGINT       ,
+      sales                   DECIMAL(18,9),
+      unit_sales              DECIMAL(18,9),
+      is_forced_conversion    TINYINT      ,
+      country                 VARCHAR(2)
+    )
+    PARTITIONED BY (partition_timestamp TIMESTAMP)
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'ignore.malformed.json'='true'
+    )
+    LOCATION '{location}';
+  database: prod_buzzad
+  table: l_conversion
+  location: s3://prod-buzzvil-data-lake/buzzad/landing/conversion
+  partition:
+    name: partition_timestamp
+    type: hourly

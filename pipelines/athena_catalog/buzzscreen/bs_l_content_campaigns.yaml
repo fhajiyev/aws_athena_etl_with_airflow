@@ -1,0 +1,89 @@
+---
+pipeline_key: bs_l_content_campaigns
+pipeline_type: athena_catalog
+pipeline_dag_configs:
+  start_date: 2020-05-20 00:00:00
+  schedule_interval: "0 17 * * 0" # “At 17:00 on Sunday (UTC).”
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency
+    - trigger: sla_miss
+      args:
+        channel: data-emergency
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: redshift_s3_unload_bs_l_content_campaigns
+    timedelta_hours: 0
+
+athena:
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzscreen"
+  table: l_content_campaigns
+  location: "s3://prod-buzzvil-data-lake/buzzscreen/landing/content_campaigns"
+  partition:
+    name: partition_timestamp
+    location: "s3://prod-buzzvil-data-lake/buzzscreen/landing/content_campaigns/year={year}/month={month}/day={day}/hour={hour}"
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id                    BIGINT,
+      name                  VARCHAR(1024),
+      title                 VARCHAR(1024),
+      description           VARCHAR(1024),
+      categories            VARCHAR(255),
+      image                 VARCHAR(255),
+      media_type            BIGINT,
+      landing_type          BIGINT,
+      clean_mode            BIGINT,
+      clean_link            VARCHAR(255),
+      status                BIGINT,
+      score                 FLOAT,
+      json                  VARCHAR(500),
+      start_date            TIMESTAMP,
+      end_date              TIMESTAMP,
+      week_slot             VARCHAR(600),
+      display_type          VARCHAR(1),
+      display_weight        BIGINT,
+      ipu                   BIGINT,
+      dipu                  BIGINT,
+      tipu                  BIGINT,
+      target_age_min        BIGINT,
+      target_age_max        BIGINT,
+      registered_days_min   BIGINT,
+      registered_days_max   BIGINT,
+      target_gender         VARCHAR(1),
+      target_language       VARCHAR(10),
+      target_carrier        VARCHAR(255),
+      target_region         VARCHAR(255),
+      target_app            VARCHAR(255),
+      custom_target_1       VARCHAR(255),
+      custom_target_2       VARCHAR(255),
+      custom_target_3       VARCHAR(255),
+      target_unit           VARCHAR(500),
+      country               VARCHAR(2),
+      timezone              VARCHAR(50),
+      organization_id       BIGINT,
+      owner_id              BIGINT,
+      channel_id            BIGINT,
+      provider_id           BIGINT,
+      natural_id            VARCHAR(755),
+      template_id           BIGINT,
+      is_enabled            BIGINT,
+      is_ctr_filter_off     BIGINT,
+      created_at            TIMESTAMP,
+      updated_at            TIMESTAMP,
+      published_at          TIMESTAMP,
+      tags                  VARCHAR(1024),
+      click_url             VARCHAR(1024),
+      target_sdk_max        BIGINT,
+      target_sdk_min        BIGINT
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    tblproperties("parquet.compress"="SNAPPY");

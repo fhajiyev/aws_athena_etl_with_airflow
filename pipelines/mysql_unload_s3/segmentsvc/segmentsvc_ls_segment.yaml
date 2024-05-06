@@ -1,0 +1,65 @@
+# CREATE TABLE `segment` (
+#   `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+#   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+#   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+#   `evaluated_at` datetime DEFAULT NULL,
+#   `organization_id` bigint(20) unsigned NOT NULL,
+#   `name` varchar(255) NOT NULL,
+#   `description` text NOT NULL,
+#   `serialized_data` text NOT NULL,
+#   `status` tinyint(3) unsigned NOT NULL DEFAULT '1',
+#   `profiles_count` bigint(20) unsigned NOT NULL DEFAULT '0',
+#   PRIMARY KEY (`id`)
+# ) ENGINE=InnoDB AUTO_INCREMENT=15 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+---
+pipeline_key: segmentsvc_ls_segment
+pipeline_type: mysql_unload_s3
+pipeline_dag_configs:
+  start_date: 2020-11-24 09:00:00
+  schedule_interval: "0 * * * *"
+mysql:
+  conn_id: segmentsvc_mysql
+  table_name: segment
+  increment_key: id
+  increment_key_type: dump
+  fields:
+    - id
+    - created_at
+    - updated_at 
+    - evaluated_at
+    - organization_id
+    - name
+    - description
+    - serialized_data
+    - status
+    - profiles_count
+s3:
+  bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  prefix: segmentsvc/landing_snapshot/segment/year={year}/month={month}/day={day}/hour={hour}
+  file_key: segmentsvc_ls_segment
+  data_format: parquet
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id                BIGINT,
+      created_at        TIMESTAMP,
+      updated_at        TIMESTAMP,
+      evaluated_at      TIMESTAMP,
+      organization_id   BIGINT,
+      name              VARCHAR(255),
+      description       STRING,
+      serialized_data   STRING,
+      status            TINYINT,
+      profiles_count    BIGINT
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY");
+  database: "{{ var.value.get('server_env', 'prod') }}_segmentsvc"
+  table: ls_segment
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/segmentsvc/landing_snapshot/segment"
+  partition:
+    key: partition_timestamp
+    value: "{{execution_date.strftime('%Y-%m-%d %H:00:00')}}"
+    subdir: "year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}"

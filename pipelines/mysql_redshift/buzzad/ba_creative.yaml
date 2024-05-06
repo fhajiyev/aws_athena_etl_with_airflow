@@ -1,0 +1,92 @@
+---
+pipeline_key: ba_creative
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: buzzad_mysql
+  table_name: creatives
+  fields:
+  - id
+  - name
+  - lineitem_id
+  - width
+  - height
+  - icon
+  - image_url
+  - click_url
+  - creative_type
+  - is_enabled
+  # - html
+  - layout_type
+  - background_image_url
+  # - action_description
+  - call_to_action
+  # - description
+  # - short_action_description
+  - landing_type
+  - adchoice_url
+  - ui_name
+  - is_deeplink
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: ba_creative
+  fields:
+  - id
+  - name
+  - lineitem_id
+  - width
+  - height
+  - icon
+  - image_url
+  - click_url
+  - creative_type
+  - is_enabled
+  # - html
+  - layout_type
+  - background_image_url
+  # - action_description
+  - call_to_action
+  # - description
+  # - short_action_description
+  - landing_type
+  - adchoice_url
+  - ui_name
+  - is_deeplink
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                            INT8            NOT NULL       ENCODE ZSTD,
+      name                          VARCHAR(300)    NULL           ENCODE LZO,
+      lineitem_id                   INT8            NOT NULL       ENCODE ZSTD,
+      width                         INT4            NOT NULL       ENCODE ZSTD,
+      height                        INT4            NOT NULL       ENCODE ZSTD,
+      icon                          VARCHAR(2048)   NULL           ENCODE LZO,
+      image_url                     VARCHAR(2048)   NULL           ENCODE LZO,
+      click_url                     VARCHAR(2048)   NULL           ENCODE LZO,
+      creative_type                 INT2            NOT NULL       ENCODE ZSTD,
+      is_enabled                    INT2            NOT NULL       ENCODE ZSTD,
+      -- html                       VARCHAR(2048)   NULL           ENCODE LZO,
+      layout_type                   INT2            NOT NULL       ENCODE ZSTD,
+      background_image_url          VARCHAR(2048)    NULL           ENCODE LZO,
+      -- action_description         VARCHAR(2048)   NULL           ENCODE LZO,
+      call_to_action                VARCHAR(256)    NULL           ENCODE LZO,
+      -- description                VARCHAR(2048)   NULL           ENCODE LZO,
+      -- short_action_description   VARCHAR(2048)   NULL           ENCODE LZO,
+      landing_type                  INT2            NULL           ENCODE ZSTD,
+      adchoice_url                  VARCHAR(2048)   NULL           ENCODE LZO,
+      ui_name                       VARCHAR(300)    NULL           ENCODE LZO,
+      is_deeplink                   INT2            NOT NULL       ENCODE ZSTD
+    )
+    DISTKEY(id)
+    SORTKEY(lineitem_id)
+    ;
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id

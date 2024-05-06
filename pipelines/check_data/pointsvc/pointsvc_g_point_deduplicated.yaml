@@ -1,0 +1,80 @@
+# check__pointsvc_g_point validates deduplicated table pointsvc.g_point for pointsvc.g_stream_point
+# augend: If g_point has vanished records from g_stream_point, augend value has positive integer 
+# addend: If g_point has duplicated records per unique keys (account_id, version), addend value has positive integer
+# augend + addend must be zero
+---
+pipeline_key: pointsvc_g_point_deduplicated
+pipeline_type: check_data
+pipeline_dag_configs:
+  start_date: 2020-05-06 02:00:00
+  schedule_interval: "0 * * * *"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: airflow-check-monitoring
+    - trigger: sla_miss
+      args:
+        channel: airflow-check-monitoring
+
+upstream_dependencies:
+  - dag_id: athena_deduplicate_pointsvc_g_point
+    timedelta_hours: 0
+
+# table has no vanished record
+augend:
+  data_source:
+    type: athena
+    database: "{env}_pointsvc"
+    workgroup: pointsvc
+  query: |
+    SELECT
+      COUNT(*) AS result
+    FROM
+      {env}_pointsvc.g_stream_point P
+      LEFT OUTER JOIN {env}_pointsvc.g_point D
+          ON P.account_id = D.account_id AND P.version = D.version
+    WHERE
+      P.partition_timestamp >= TIMESTAMP '{start_time}' - interval '7' day - interval '1' hour -- stream has late arrival issue
+      AND P.partition_timestamp < TIMESTAMP '{end_time}' - interval '7' day + interval '1' hour
+      AND P.created_at >= TIMESTAMP '{start_time}' - interval '7' day
+      AND P.created_at < TIMESTAMP '{end_time}' - interval '7' day
+
+      AND D.partition_timestamp >= TIMESTAMP '{start_time}' - interval '7' day
+      AND D.partition_timestamp < TIMESTAMP '{end_time}' - interval '7' day
+      AND D.created_at >= TIMESTAMP '{start_time}' - interval '7' day
+      AND D.created_at < TIMESTAMP '{end_time}' - interval '7' day
+
+      AND D.account_id is NULL
+      AND D.version is NULL
+
+# well deduplicated
+addend:
+  data_source:
+    type: athena
+    database: "{env}_pointsvc"
+    workgroup: pointsvc
+  query: |
+    SELECT
+      SUM(P.cnt) as result  -- sum of duplicated records in dedup table
+    FROM (
+      SELECT
+        account_id,
+        version,
+        COUNT(*) as cnt
+      FROM
+        {env}_pointsvc.g_point
+      WHERE
+        partition_timestamp >= TIMESTAMP '{start_time}' - interval '7' day
+        AND partition_timestamp <  TIMESTAMP '{end_time}' - interval '7' day
+        AND created_at >= TIMESTAMP '{start_time}' - interval '7' day
+        AND created_at < TIMESTAMP '{end_time}' - interval '7' day
+      GROUP BY 1, 2
+      HAVING COUNT(*) > 1
+    ) AS P
+  default: 0
+
+comparison:
+  operator: eq
+  threshold: 0

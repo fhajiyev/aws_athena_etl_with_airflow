@@ -1,0 +1,66 @@
+# CREATE TABLE `contracts` (
+#   `name` varchar(50) NOT NULL,
+#   `agency_fee` decimal(27,9) NOT NULL,
+#   `revenue_display_share` decimal(27,9) NOT NULL,
+#   `revenue_adnetwork_dynamic_share` decimal(27,9) NOT NULL,
+#   `revenue_owner_share` decimal(27,9) NOT NULL,
+#   `revenue_action_share` decimal(27,9) NOT NULL,
+#   `cost_reimbursement_display` decimal(27,9) NOT NULL,
+#   `cost_reimbursement_action` decimal(27,9) NOT NULL,
+#   `updated_at` datetime(6) NOT NULL,
+#   `created_at` datetime(6) NOT NULL,
+#   PRIMARY KEY (`name`)
+# ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+---
+pipeline_key: billingsvc_ls_contracts
+pipeline_type: mysql_unload_s3
+pipeline_dag_configs:
+  start_date: 2020-09-16 17:00:00
+  schedule_interval: "0 17 * * *"
+mysql:
+  conn_id: billingsvc_mysql
+  table_name: contracts
+  increment_key: name
+  increment_key_type: dump
+  fields:
+  - name
+  - agency_fee
+  - revenue_display_share
+  - revenue_adnetwork_dynamic_share
+  - revenue_owner_share
+  - revenue_action_share
+  - cost_reimbursement_display
+  - cost_reimbursement_action
+  - updated_at
+  - created_at
+s3:
+  bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  prefix: billingsvc/landing_snapshot/contracts/year={year}/month={month}/day={day}/hour={hour}
+  file_key: billingsvc_ls_contracts
+  data_format: parquet
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      name                              VARCHAR(255),
+      agency_fee                        DECIMAL(27,9),
+      revenue_display_share             DECIMAL(27,9),
+      revenue_adnetwork_dynamic_share   DECIMAL(27,9),
+      revenue_owner_share               DECIMAL(27,9),
+      revenue_action_share              DECIMAL(27,9),
+      cost_reimbursement_display        DECIMAL(27,9),
+      cost_reimbursement_action         DECIMAL(27,9),
+      updated_at                        TIMESTAMP,
+      created_at                        TIMESTAMP
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY");
+  database: "{{ var.value.get('server_env', 'prod') }}_billingsvc"
+  table: ls_contracts
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/billingsvc/landing_snapshot/contracts"
+  partition:
+    key: partition_timestamp
+    value: "{{execution_date.strftime('%Y-%m-%d %H:00:00')}}"
+    subdir: "year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}"
+

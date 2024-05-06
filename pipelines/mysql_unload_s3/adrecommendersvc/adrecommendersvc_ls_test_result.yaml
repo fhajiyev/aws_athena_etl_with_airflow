@@ -1,0 +1,72 @@
+# CREATE TABLE `test_result` (
+#   `id` bigint(20) NOT NULL AUTO_INCREMENT,
+#   `allocation_id` varchar(255) NOT NULL,
+#   `test_group` varchar(255) NOT NULL,
+#   `score_diff` float NOT NULL,
+#   `ifa` varchar(255) NOT NULL,
+#   `ad_ids` varchar(255) NOT NULL,
+#   `ad_scores` varchar(255) NOT NULL,
+#   `ad_reward_conditions` varchar(255) NOT NULL,
+#   `reward_condition_diff` varchar(255) NOT NULL,
+#   `best_ad_id` int(11) DEFAULT NULL,
+#   `occurred_at` timestamp NULL DEFAULT NULL,
+#   PRIMARY KEY (`id`),
+#   KEY `allocation_id` (`allocation_id`),
+#   KEY `test_group` (`test_group`),
+#   KEY `ifa` (`ifa`)
+# ) ENGINE=InnoDB AUTO_INCREMENT=223423 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+---
+pipeline_key: adrecommendersvc_ls_test_result
+pipeline_type: mysql_unload_s3
+pipeline_dag_configs:
+  start_date: 2020-10-14 17:00:00
+  schedule_interval: "0 17 * * *"
+mysql:
+  conn_id: adrecommendersvc_mysql
+  table_name: test_result
+  increment_key: name
+  increment_key_type: dump
+  fields:
+  - id
+  - allocation_id
+  - test_group
+  - score_diff
+  - ifa
+  - ad_ids
+  - ad_scores
+  - ad_reward_conditions
+  - reward_condition_diff
+  - best_ad_id
+  - occurred_at
+s3:
+  bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  prefix: adrecommendersvc/landing_snapshot/test_result/year={year}/month={month}/day={day}/hour={hour}
+  file_key: adrecommendersvc_ls_test_result
+  data_format: parquet
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id                      BIGINT,
+      allocation_id           VARCHAR(1024),
+      test_group              VARCHAR(1024),
+      score_diff              FLOAT,
+      ifa                     VARCHAR(1024),
+      ad_ids                  VARCHAR(1024),
+      ad_scores               VARCHAR(1024),
+      ad_reward_conditions    VARCHAR(1024),
+      reward_condition_diff   VARCHAR(1024),
+      best_ad_id              BIGINT,
+      occurred_at             TIMESTAMP
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY");
+  database: "{{ var.value.get('server_env', 'prod') }}_adrecommendersvc"
+  table: ls_test_result
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/adrecommendersvc/landing_snapshot/test_result"
+  partition:
+    key: partition_timestamp
+    value: "{{execution_date.strftime('%Y-%m-%d %H:00:00')}}"
+    subdir: "year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}"
+

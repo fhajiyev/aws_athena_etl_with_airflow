@@ -1,0 +1,75 @@
+---
+pipeline_key: ba_g_nethru_tracking
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-05-15 07:00:00
+  schedule_interval: "10 * * * *"
+athena:
+  workgroup: buzzad
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+          format = 'JSON',
+          external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+        SELECT
+          viewer_id,
+          viewer_id_encrypted,
+          unit_id,
+          lineitem_id,
+          tracking_type,
+          allocation_id,
+          click_id,
+          click_url,
+          priority,
+          unit_price,
+          CASE
+            WHEN plan_id is null THEN url_extract_parameter(concat('?', click_url), 'planId')
+            ELSE plan_id
+          END AS plan_id,
+          CASE
+            WHEN scenario_id is null THEN url_extract_parameter(concat('?', click_url), 'scenarioId')
+            ELSE scenario_id
+          END AS scenario_id,
+          log_at
+        FROM
+            {{{{ var.value.get('server_env', 'prod') }}}}_buzzad.l_nethru_tracking
+        WHERE
+            partition_timestamp >= TIMESTAMP'{start_time}' AND
+            partition_timestamp < TIMESTAMP'{end_time}'
+    );
+  output_bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  output_prefix: buzzad/gold/nethru_tracking/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzad_gold_nethru_tracking
+  file_extension: json.gz
+
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzad"
+  table: g_nethru_tracking
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/buzzad/gold/nethru_tracking"
+  partition:
+    name: partition_timestamp
+    location: "s3://{{{{ var.value.get('server_env', 'prod') }}}}-buzzvil-data-lake/buzzad/gold/nethru_tracking/year={year}/month={month}/day={day}/hour={hour}"
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      viewer_id                VARCHAR(64),
+      viewer_id_encrypted      VARCHAR(64),
+      unit_id                  BIGINT,
+      lineitem_id              BIGINT,
+      tracking_type            VARCHAR(20),
+      allocation_id            VARCHAR(64),
+      click_id                 VARCHAR(64),
+      click_url                VARCHAR(1024),
+      priority                 INT,
+      unit_price               DECIMAL(18,9),
+      plan_id                  VARCHAR(30),
+      scenario_id              VARCHAR(30),
+      log_at                   TIMESTAMP
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'ignore.malformed.json'='true'
+    )
+    LOCATION '{location}';

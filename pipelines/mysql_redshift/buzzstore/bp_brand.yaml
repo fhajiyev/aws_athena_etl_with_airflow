@@ -1,0 +1,59 @@
+#  For
+#
+#
+---
+pipeline_key: bp_brand
+pipeline_type: mysql_redshift
+incremental_sync: False
+
+mysql:
+  conn_id: buzzstore_mysql
+  table_name: brands
+  fields:
+  - id
+  - brand_image_url
+  - is_enabled
+  - "`order`"
+  - created_at
+  - brand_display_name
+  - category_id
+  - updated_at
+  - brand_cover_url
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: bp_brand
+  fields:
+  - id
+  - brand_image_url
+  - is_enabled
+  - ordering
+  - created_at
+  - brand_display_name
+  - category_id
+  - updated_at
+  - brand_cover_url
+  copy_method: replace
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                  INT8           NOT NULL     ENCODE ZSTD,
+      brand_image_url     VARCHAR(512)   DEFAULT NULL ENCODE LZO,
+      is_enabled          INT2           NOT NULL     ENCODE ZSTD,
+      ordering            INT8           NOT NULL     ENCODE ZSTD,
+      created_at          TIMESTAMP      NOT NULL     ENCODE ZSTD,
+      brand_display_name  VARCHAR(255)   DEFAULT NULL ENCODE LZO,
+      category_id         INT8           DEFAULT NULL ENCODE ZSTD,
+      updated_at          TIMESTAMP      NOT NULL     ENCODE ZSTD,
+      brand_cover_url     VARCHAR(255)   NOT NULL     ENCODE LZO,
+      PRIMARY KEY(id)
+    )
+    DISTSTYLE ALL
+    ;
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id

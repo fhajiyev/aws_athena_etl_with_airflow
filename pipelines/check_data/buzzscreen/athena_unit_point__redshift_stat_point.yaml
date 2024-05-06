@@ -1,0 +1,58 @@
+# {athena.statssvc.g_unit_point sum(reward)} - {redshift.bs_statistics_point sum(reward)} >= 0
+# assume datalake is superset of redshift
+# https://github.com/Buzzvil/buzzscreen/blob/2925f4c762701ff41e562fd9e1d89a21e8163712/statistics/management/commands/update_statistics_point.py#L80
+---
+pipeline_key: athena_unit_point__redshift_stat_point
+pipeline_type: check_data
+pipeline_dag_configs:
+  start_date: 2020-07-21 12:00:00
+  schedule_interval: "0 * * * *"
+  max_active_runs: 1
+
+upstream_dependencies:
+  - dag_id: athena_process_statssvc_g_unit_point
+    timedelta_hours: 0
+
+# depends on athena_process_statssvc_g_unit_point
+execution_delay: 21600
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: airflow-check-monitoring
+    - trigger: sla_miss
+      args:
+        channel: airflow-check-monitoring
+
+augend:
+  data_source:
+    type: athena
+    database: "{env}_statssvc"
+    workgroup: statssvc
+  query: |
+    SELECT SUM(reward) as result
+    FROM {env}_statssvc.g_unit_point
+    WHERE
+      partition_timestamp >= TIMESTAMP '{start_time}'
+      AND partition_timestamp <  TIMESTAMP '{end_time}'
+      AND data_at >= TIMESTAMP '{start_time}'
+      AND data_at <  TIMESTAMP '{end_time}'
+
+# Jenkins: http://jenkins.buzzvil-internal.com:9100/job/prod_buzzscreen_update_statistics_point/
+# Source: https://github.com/Buzzvil/buzzscreen/blob/2925f4c/statistics/management/commands/update_statistics_point.py
+addend:
+  data_source:
+    type: redshift
+    conn_id: redshift
+  query: |
+    SELECT SUM(reward_sum) as result        -- base_reward_sum은 reward_sum에 포함됨
+    FROM bs_statistics_point
+    WHERE
+      data_at >= TIMESTAMP '{start_time}'
+      AND data_at <  TIMESTAMP '{end_time}'
+  multiplier: -1
+
+comparison:
+  operator: ge
+  threshold: 0

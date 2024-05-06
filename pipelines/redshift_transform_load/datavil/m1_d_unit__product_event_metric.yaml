@@ -1,0 +1,100 @@
+# Note that
+#
+---
+pipeline_key: m1_d_unit__product_event_metric
+pipeline_type: redshift_transform_load
+pipeline_dag_configs:
+  start_date: 2020-05-31 16:00:00
+  schedule_interval: "0 16 * * *"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency
+    - trigger: sla_miss
+      args:
+        channel: data-emergency
+    - trigger: retry
+      args:
+        channel: data-warning
+
+transform:
+  select_query: |
+    SELECT
+      date_trunc('day', e.created_at + interval '9 hours') AS kst_at,
+      u.name AS unit_name,
+      u.id AS unit_id,
+      u.platform AS platfrom,
+      u.unit_type AS unit_type,
+      e.type AS event_type,
+      e.name AS event_name,
+      e.version AS sdk_version,
+      count(distinct ifa) AS cnt_ifa,
+      count(distinct user_id) AS cnt_user_id,
+      count(*) AS cnt_event
+    FROM
+      bi_event e
+    JOIN
+      ba_unit u
+      ON e.unit_id = u.id
+    WHERE
+      e.created_at >= TIMESTAMP'{start_time}' - interval '1 hour'  AND
+      e.created_at < TIMESTAMP'{end_time}' - interval '1 hour'
+    GROUP BY
+    	1,2,3,4,5,6,7,8
+
+
+  delete_query : |
+    DELETE
+    FROM
+      datavil.m1_d_unit__product_event_metric
+    WHERE
+      kst_at >= TIMESTAMP'{start_time}' - interval '16 hour' + interval '24 hour' AND
+      kst_at < TIMESTAMP'{end_time}' - interval '16 hour' + interval '24 hour'
+
+
+redshift:
+  conn_id: redshift_de
+  table_name: datavil.m1_d_unit__product_event_metric
+  fields:
+  - kst_at
+  - unit_name
+  - unit_id
+  - platfrom
+  - unit_type
+  - event_type
+  - event_name
+  - sdk_version
+  - cnt_ifa
+  - cnt_user_id
+  - cnt_event
+
+  unique_key_list:
+  - kst_at
+  - unit_id
+  - event_type
+  - event_name
+  - sdk_version
+  increment_key: kst_at
+  increment_key_type: timestamp
+  copy_method: incremental
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      kst_at      TIMESTAMP       ENCODE AZ64,
+      unit_name   VARCHAR(64)     ENCODE ZSTD,
+      unit_id     BIGINT          ENCODE AZ64,
+      platfrom    VARCHAR(16)     ENCODE ZSTD,
+      unit_type   VARCHAR(32)     ENCODE ZSTD,
+      event_type  VARCHAR(128)    ENCODE ZSTD,
+      event_name  VARCHAR(1024)   ENCODE ZSTD,
+      sdk_version INT             ENCODE AZ64,
+      cnt_ifa     INT             ENCODE AZ64,
+      cnt_user_id INT             ENCODE AZ64,
+      cnt_event   BIGINT          ENCODE AZ64,
+      UNIQUE(kst_at, unit_id, event_type, event_name, sdk_version)
+    )
+    DISTKEY(unit_id)
+    SORTKEY(kst_at)
+    ;

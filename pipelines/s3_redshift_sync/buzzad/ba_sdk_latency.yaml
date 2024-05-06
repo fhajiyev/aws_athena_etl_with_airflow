@@ -1,0 +1,56 @@
+---
+pipeline_key: ba_sdk_latency
+pipeline_type: s3_redshift_sync
+pipeline_dag_configs:
+  start_date: 2019-07-01 00:00:00
+  schedule_interval: "@hourly"
+delay_seconds: 600
+
+s3:
+  bucket: buzzvil-log-oregon
+  prefix: prod/buzzad/buzzad-general-sdk_latency
+redshift:
+  table_name: ba_sdk_latency
+  fields:
+  - placement_id
+  - publisher_id
+  - adn_name
+  - request_time
+  - response_time
+  - is_filled
+  - created_at
+  unique_key_list:
+  - placement_id
+  - publisher_id
+  - adn_name
+  - request_time
+  - response_time
+  - is_filled
+  - created_at
+  deduplicate_key_list:
+  - placement_id
+  - publisher_id
+  - adn_name
+  - request_time
+  - response_time
+  - is_filled
+  - created_at
+  increment_key: created_at
+  increment_key_type: timestamp
+  copy_method: upsert
+  copy_option: jsonpath
+  jsonpath_location: 's3://buzzvil-log-oregon/prod/buzzad/buzzad-general-sdk_latency/jsonpaths/ba_sdk_latency.jsonpaths'
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      placement_id    VARCHAR(50)   NOT NULL                   ENCODE ZSTD,
+      publisher_id    VARCHAR(50)   NOT NULL                   ENCODE ZSTD,
+      adn_name        VARCHAR(50)   NOT NULL                   ENCODE ZSTD,
+      request_time    BIGINT        NOT NULL                   ENCODE ZSTD,
+      response_time   BIGINT        NOT NULL                   ENCODE ZSTD,
+      is_filled       BOOL          NOT NULL   DEFAULT FALSE   ENCODE ZSTD,
+      created_at      TIMESTAMP     NOT NULL                   ENCODE ZSTD
+    )
+    DISTSTYLE ALL
+    SORTKEY(created_at)
+    ;

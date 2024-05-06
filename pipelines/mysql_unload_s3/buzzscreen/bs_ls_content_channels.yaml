@@ -1,0 +1,57 @@
+# CREATE TABLE `content_channels` (
+#   `id` int(11) NOT NULL AUTO_INCREMENT,
+#   `name` varchar(100) NOT NULL,
+#   `logo` varchar(255) NOT NULL,
+#   `category` varchar(100) NOT NULL,
+#   `organization_id` int(10) unsigned NOT NULL,
+#   `created_at` datetime(6) NOT NULL,
+#   `updated_at` datetime(6) NOT NULL,
+#   PRIMARY KEY (`id`)
+# ) ENGINE=InnoDB AUTO_INCREMENT=3849 DEFAULT CHARSET=utf8;
+
+---
+pipeline_key: bs_ls_content_channel
+pipeline_type: mysql_unload_s3
+pipeline_dag_configs:
+  start_date: 2020-10-01 17:00:00
+  schedule_interval: "0 17 * * *"
+mysql:
+  conn_id: buzzscreen_mysql
+  table_name: content_channels
+  increment_key: id
+  increment_key_type: numeric
+  fields:
+  - id
+  - name
+  - logo
+  - category
+  - organization_id
+  - created_at
+  - updated_at
+s3:
+  bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  prefix: buzzscreen/landing_snapshot/content_channel/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzscreen_content_channel
+  data_format: parquet
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id                BIGINT,
+      name              VARCHAR(255),
+      logo              VARCHAR(1024),
+      category          VARCHAR(255),
+      organization_id   BIGINT,
+      created_at        TIMESTAMP,
+      updated_at        TIMESTAMP
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY");
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzscreen"
+  table: ls_content_channel
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/buzzscreen/landing_snapshot/content_channel"
+  partition:
+    key: partition_timestamp
+    value: "{{execution_date.strftime('%Y-%m-%d %H:00:00')}}"
+    subdir: "year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}"

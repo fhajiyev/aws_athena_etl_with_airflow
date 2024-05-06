@@ -1,0 +1,53 @@
+---
+pipeline_key: bs_g_profile
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-07-08 03:00:00
+  schedule_interval: "0 * * * *"
+
+upstream_dependencies:
+   - dag_id: athena_catalog_bs_l_profile
+     timedelta_hours: 0
+
+downstream_dependencies:
+   - dag_id: athena_process_ba_l_profile_bs_g_profile
+     task_id: generate_uuid
+
+athena:
+  workgroup: buzzscreen
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+          format = 'PARQUET',
+          parquet_compression = 'SNAPPY',
+          external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+        SELECT
+            *
+        FROM
+            prod_buzzscreen.l_profile
+        WHERE
+            partition_timestamp >= TIMESTAMP'{start_time}' AND
+            partition_timestamp < TIMESTAMP'{end_time}'
+    );
+  output_bucket: prod-buzzvil-data-lake
+  output_prefix: buzzscreen/gold/profile/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzscreen-profile
+  file_extension: parquet
+
+  database: prod_buzzscreen
+  table: g_profile
+  location: s3://prod-buzzvil-data-lake/buzzscreen/gold/profile
+  partition:
+    name: partition_timestamp
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+    location: s3://prod-buzzvil-data-lake/buzzscreen/gold/profile/year={year}/month={month}/day={day}/hour={hour}
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+        payload             MAP<STRING, STRING>,
+        log_at              TIMESTAMP
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    tblproperties("parquet.compress"="SNAPPY");

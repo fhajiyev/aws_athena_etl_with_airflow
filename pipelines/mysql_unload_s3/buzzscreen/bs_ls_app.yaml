@@ -1,0 +1,79 @@
+# CREATE TABLE `apps` (
+#   `id` bigint(20) NOT NULL AUTO_INCREMENT,
+#   `uuid` char(32) NOT NULL,
+#   `name` varchar(50) NOT NULL,
+#   `platform` varchar(1) NOT NULL,
+#   `organization_id` int(10) unsigned NOT NULL,
+#   `is_enabled` tinyint(1) NOT NULL,
+#   `created_at` datetime(6) NOT NULL,
+#   `updated_at` datetime(6) NOT NULL,
+#   `app_url` varchar(200),
+#   `category` varchar(100),
+#   `latest_app_version` int(10) unsigned,
+#   `is_test` tinyint(1) NOT NULL,
+#   `use_external_point` tinyint(1) NOT NULL,
+#   `secret_key` varchar(128) DEFAULT NULL,
+#   PRIMARY KEY (`id`),
+#   UNIQUE KEY `uuid` (`uuid`)
+# ) ENGINE=InnoDB AUTO_INCREMENT=814929650214425 DEFAULT CHARSET=utf8;
+---
+pipeline_key: bs_ls_app
+pipeline_type: mysql_unload_s3
+pipeline_dag_configs:
+  start_date: 2020-10-01 17:00:00
+  schedule_interval: "0 * * * *"
+mysql:
+  conn_id: buzzscreen_mysql
+  table_name: apps
+  increment_key: id
+  increment_key_type: dump
+  fields:
+  - id
+  - uuid
+  - name
+  - platform
+  - organization_id
+  - is_enabled
+  - created_at
+  - updated_at
+  - app_url
+  - category
+  - latest_app_version
+  - is_test
+  - use_external_point
+  - secret_key
+s3:
+  bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  prefix: buzzscreen/landing_snapshot/app/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzscreen_app
+  data_format: parquet
+athena:
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table}(
+      id                   BIGINT,
+      uuid                 VARCHAR(64),
+      name                 VARCHAR(255),
+      platform             VARCHAR(1),
+      organization_id      BIGINT,
+      is_enabled           TINYINT,
+      created_at           TIMESTAMP,
+      updated_at           TIMESTAMP,
+      app_url              VARCHAR(1024),
+      category             VARCHAR(512),
+      latest_app_version   BIGINT,
+      is_test              TINYINT,
+      use_external_point   TINYINT,
+      secret_key           VARCHAR(512)
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    TBLPROPERTIES("parquet.compress"="SNAPPY");
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzscreen"
+  table: l_app
+  location: "s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/buzzscreen/landing_snapshot/app"
+  partition:
+    key: partition_timestamp
+    value: "{{execution_date.strftime('%Y-%m-%d %H:00:00')}}"
+    subdir: "year={{ execution_date.strftime('%Y') }}/month={{ execution_date.strftime('%m') }}/day={{ execution_date.strftime('%d') }}/hour={{ execution_date.strftime('%H') }}"
+

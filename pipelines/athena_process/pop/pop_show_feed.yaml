@@ -1,0 +1,75 @@
+# Schema mappings are from the following
+# https://github.com/Buzzvil/pointsvc/blob/master/internal/pkg/point/repo/model.go
+---
+pipeline_key: pop_g_show_feed
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-01-01 00:00:00
+  schedule_interval: "@hourly"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency
+    - trigger: sla_miss
+      args:
+        channel: data-emergency
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: athena_catalog_bi_l_event
+    timedelta_hours: 0
+
+athena:
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+          format = 'PARQUET',
+          parquet_compression = 'SNAPPY',
+          external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+        SELECT
+          TRY_CAST(app_id AS BIGINT) AS app_id,
+          TRY_CAST(unit_id AS BIGINT) AS unit_id,
+          user_id,
+          sub_user_id,
+          ifa,
+          created_at,
+          attributes
+        from
+          {{{{ var.value.get('server_env', 'prod') }}}}_bi.l_event
+        WHERE
+          type = 'show' AND
+          name = 'feed' AND
+          partition_timestamp >= TIMESTAMP'{start_time}' AND
+          partition_timestamp < TIMESTAMP'{end_time}'
+    );
+  output_bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  output_prefix: pop/gold/show/year={year}/month={month}/day={day}/hour={hour}
+  file_key: pop_g_show_feed
+  file_extension: parquet
+
+  database: "{{ var.value.get('server_env', 'prod') }}_pop"
+  table: g_show_feed
+  location: s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/pop/gold/show
+  partition:
+    name: partition_timestamp
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+    location: "s3://{{{{ var.value.get('server_env', 'prod') }}}}-buzzvil-data-lake/pop/gold/show/year={year}/month={month}/day={day}/hour={hour}"
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      app_id           BIGINT,
+      unit_id          BIGINT,
+      user_id          VARCHAR(255),
+      sub_user_id      VARCHAR(1024),
+      ifa              VARCHAR(64),
+      created_at       TIMESTAMP,
+      attributes       VARCHAR(65535)
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    tblproperties("parquet.compress"="SNAPPY");

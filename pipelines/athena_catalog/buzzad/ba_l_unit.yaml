@@ -1,0 +1,58 @@
+---
+pipeline_key: ba_l_unit
+pipeline_type: athena_catalog
+pipeline_dag_configs:
+  start_date: 2020-05-20 00:00:00
+  schedule_interval: "0 * * * *"
+
+upstream_dependencies:
+  - dag_id: redshift_s3_unload_ba_l_unit
+    timedelta_hours: 0
+
+downstream_dependencies:
+  - dag_id: athena_process_statssvc_g_stats_unit_ad_reward
+    task_id: generate_uuid
+
+athena:
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzad"
+  table: l_unit
+  location: "s3://prod-buzzvil-data-lake/buzzad/landing/unit"
+  partition:
+    name: partition_timestamp
+    location: "s3://prod-buzzvil-data-lake/buzzad/landing/unit/year={year}/month={month}/day={day}/hour={hour}"
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      id                    BIGINT,
+      app_id                BIGINT,
+      organization_id       BIGINT,
+      name                  VARCHAR(100),
+      unit_type             VARCHAR(10),
+      currency              VARCHAR(3),
+      country               VARCHAR(2),
+      timezone              VARCHAR(32),
+      unit_group_id         BIGINT,
+      platform              VARCHAR(1),
+      is_buzzvil_unit       BOOLEAN,
+      restricted_word       VARCHAR(10240),
+      target_age_from       VARCHAR(1),
+      target_age_to         VARCHAR(1),
+      target_carrier        VARCHAR(1),
+      target_sex            VARCHAR(1),
+      target_app            VARCHAR(1),
+      target_region         VARCHAR(1),
+      target_relationship   VARCHAR(1),
+      target_device_name    VARCHAR(1),
+      ads_filter_rule       VARCHAR(3000),
+      autoplay              BIGINT,
+      reward_rate           DECIMAL(20,2),
+      reward_rate_cpy       DECIMAL(20,2),
+      revenue_rate          DECIMAL(20,2),
+      revenue_rate_cpy      DECIMAL(20,2),
+      adn_timeout           DECIMAL(10,2),
+      target_fill           BIGINT
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    tblproperties("parquet.compress"="SNAPPY");

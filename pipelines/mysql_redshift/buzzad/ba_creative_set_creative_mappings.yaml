@@ -1,0 +1,43 @@
+---
+pipeline_key: ba_creative_set_creative_mappings
+pipeline_type: mysql_redshift
+incremental_sync: False
+mysql:
+  conn_id: buzzad_mysql
+  table_name: creative_set_creative_mappings
+  fields:
+  - id
+  - creative_id
+  - updated_at
+  - created_at
+  - creative_set_id
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: ba_creative_set_creative_mappings
+  fields:
+  - id
+  - creative_id
+  - updated_at
+  - created_at
+  - creative_set_id
+  copy_method: replace
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                     INT8            NOT NULL       ENCODE AZ64,
+      creative_id            INT8            NOT NULL       ,
+      created_at             TIMESTAMP       NOT NULL       ENCODE ZSTD,
+      updated_at             TIMESTAMP       NOT NULL       ENCODE ZSTD,
+      creative_set_id        INT8            NOT NULL       ENCODE AZ64,
+      PRIMARY KEY(id)
+    )
+    DISTSTYLE ALL
+    ;
+  increment_key: id
+  increment_key_type: numeric
+  unique_key_list:
+  - id

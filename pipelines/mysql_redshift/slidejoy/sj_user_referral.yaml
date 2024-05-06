@@ -1,0 +1,56 @@
+---
+pipeline_key: sj_user_referral
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: slidejoy_mysql
+  table_name: tbl_userReferral
+  fields:
+  - userId
+  - referrerId
+  - referralEventId
+  - referralType
+  - current
+  - goal
+  - credited
+  - creationDate
+  - updateDate
+  increment_key: updateDate
+  increment_key_type: timestamp
+  unique_key_list:
+  - userId
+
+redshift:
+  table_name: sj_user_referral
+  fields:
+  - userId
+  - referrerId
+  - referralEventId
+  - referralType
+  - current
+  - goal
+  - credited
+  - creationDate
+  - updateDate
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      userId              VARCHAR(64)   NOT NULL               ENCODE ZSTD,
+      referrerId          VARCHAR(64)   NOT NULL               ENCODE ZSTD,
+      referralEventId     INT8          DEFAULT          '0'   ENCODE ZSTD,
+      referralType        INT2          DEFAULT          '0'   ENCODE ZSTD,
+      current             INT           NOT NULL DEFAULT '0'   ENCODE ZSTD,
+      goal                INT           NOT NULL DEFAULT '0'   ENCODE ZSTD,
+      credited            INT           DEFAULT          '1'   ENCODE ZSTD,
+      creationDate        TIMESTAMP     NOT NULL               ENCODE ZSTD,
+      updateDate          TIMESTAMP     NOT NULL               ENCODE ZSTD
+    )
+    DISTKEY(userId)
+    SORTKEY(updateDate)
+    ;
+  increment_key: updateDate
+  increment_key_type: timestamp
+  unique_key_list:
+  - userId

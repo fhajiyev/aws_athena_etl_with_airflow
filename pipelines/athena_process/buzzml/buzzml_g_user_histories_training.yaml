@@ -1,0 +1,75 @@
+---
+pipeline_key: buzzml_g_user_histories_training
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-08-16 00:00:00
+  schedule_interval: "@hourly"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency-oracle
+    - trigger: sla_miss
+      args:
+        channel: data-emergency-oracle
+    - trigger: retry
+      args:
+        channel: data-warning
+        
+upstream_dependencies:
+  - dag_id: athena_process_buzzml_g_click_from_impression
+    timedelta_hours: -1
+  - dag_id: athena_process_buzzml_g_cart_from_view_detail
+    timedelta_hours: -1
+  - dag_id: athena_process_buzzml_g_purchase_from_view_detail
+    timedelta_hours: -1
+
+sensor_soft_fail: false
+
+athena:
+  workgroup: oracle
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+          format = 'PARQUET',
+          parquet_compression = 'SNAPPY',
+          external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+      SELECT * FROM prod_buzzml.g_click_from_impression WHERE partition_timestamp = TIMESTAMP '{start_time}'
+      UNION
+      SELECT * FROM prod_buzzml.g_cart_from_view_detail WHERE partition_timestamp = TIMESTAMP '{start_time}'
+      UNION
+      SELECT * FROM prod_buzzml.g_purchase_from_view_detail WHERE partition_timestamp = TIMESTAMP '{start_time}'
+    );
+
+  output_bucket: prod-buzzvil-data-lake
+  output_prefix: buzzml/gold/user_histories_training/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzml_g_user_histories_training
+  file_extension: parquet
+
+  database: prod_buzzml
+  table: g_user_histories_training
+  location: s3://prod-buzzvil-data-lake/buzzml/gold/user_histories_training
+
+  partition:
+    name: partition_timestamp
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+    location: s3://prod-buzzvil-data-lake/buzzml/gold/user_histories_training/year={year}/month={month}/day={day}/hour={hour}
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      viewer_id                VARCHAR(64),
+      allocation_id            VARCHAR(64),
+      lineitem_id              BIGINT,
+      unit_id                  BIGINT,
+      product_id               BIGINT,
+      product_feed_id          BIGINT,
+      user_action              VARCHAR(32),
+      is_occurred              BOOLEAN,
+      reward_condition         VARCHAR(64),
+      occurred_at              VARCHAR(64)
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    tblproperties("parquet.compress"="SNAPPY");

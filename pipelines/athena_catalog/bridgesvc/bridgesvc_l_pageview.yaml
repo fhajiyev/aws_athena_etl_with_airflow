@@ -1,0 +1,34 @@
+---
+pipeline_key: bridgesvc_l_pageview
+pipeline_type: athena_catalog
+pipeline_dag_configs:
+  start_date: 2020-08-20 00:00:00
+  schedule_interval: "0 * * * *"
+
+athena:
+  database: "{{ var.value.get('server_env', 'prod') }}_bridgesvc"
+  table: l_pageview
+  location: s3://prod-buzzvil-data-lake/eks/namespace_name=bridgesvc/type=pageview
+  partition:
+    name: partition_timestamp
+    location: s3://prod-buzzvil-data-lake/eks/namespace_name=bridgesvc/type=pageview/year={year}/month={month}/day={day}/hour={hour}
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+        payload             MAP<STRING, STRING>,
+        log_at              TIMESTAMP
+        -- payload['app_id']            BIGINT,
+        -- payload['offer_id']          BIGINT,
+        -- payload['account_id']        VARCHAR(255),
+        -- payload['ssid']              VARCHAR(64),
+        -- payload['gender']            VARCHAR(1),
+        -- payload['year_of_birth']     INTEGER,
+        -- payload['redirection_url']   STRING,
+    )
+    PARTITIONED BY (partition_timestamp TIMESTAMP)
+    ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'serialization.format' = '1',
+      'ignore.malformed.json'='true'
+    )
+    LOCATION '{location}';

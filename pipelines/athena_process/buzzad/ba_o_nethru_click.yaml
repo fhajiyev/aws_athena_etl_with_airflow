@@ -1,0 +1,49 @@
+---
+pipeline_key: ba_o_nethru_click
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-04-29 06:00:00
+  schedule_interval: "10 * * * *"
+athena:
+  workgroup: buzzad
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+        format = 'TEXTFILE',
+        field_delimiter = '\t',
+        external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+        SELECT
+          viewer_id_encrypted AS viewer_id,
+          click_url,
+          log_at AS created_at
+        FROM
+            {{{{ var.value.get('server_env', 'prod') }}}}_buzzad.l_nethru_tracking
+        WHERE
+            tracking_type = 'click' AND
+            partition_timestamp >= TIMESTAMP'{start_time}' AND
+            partition_timestamp < TIMESTAMP'{end_time}'
+    );
+  output_bucket: buzzad-data
+  output_prefix: dna-resources/nethru-click/year={year}/month={month}/day={day}/hour={hour}
+  file_key: buzzad-nethru-click
+  file_extension: gz
+
+  database: "{{ var.value.get('server_env', 'prod') }}_buzzad"
+  table: o_nethru_click
+  location: s3://buzzad-data/dna-resources/nethru-click
+  partition:
+    name: partition_timestamp
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+    location: s3://buzzad-data/dna-resources/nethru-click/year={year}/month={month}/day={day}/hour={hour}
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      viewer_id           VARCHAR(64),
+      click_url           VARCHAR(1024),
+      log_at              TIMESTAMP
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    ROW FORMAT DELIMITED
+      FIELDS TERMINATED BY '\t'
+      LINES TERMINATED BY '\n'
+    LOCATION '{location}';

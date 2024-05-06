@@ -1,0 +1,115 @@
+---
+pipeline_key: pointsvc_g_stream_point
+pipeline_type: athena_process
+pipeline_dag_configs:
+  start_date: 2020-04-29 00:00:00
+  schedule_interval: "@hourly"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency
+    - trigger: sla_miss
+      args:
+        channel: data-emergency
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: athena_catalog_pointsvc_l_point
+    timedelta_hours: 0
+
+downstream_dependencies:
+  - dag_id: athena_process_statssvc_g_stats_unit_ad_reward
+    task_id: generate_uuid
+  - dag_id: athena_deduplicate_pointsvc_g_point
+    task_id: generate_uuid
+
+sensor_soft_fail: false
+
+athena:
+  workgroup: pointsvc
+  process_query: |
+    CREATE TABLE IF NOT EXISTS {database}.{temp_table}
+    WITH (
+          format = 'PARQUET',
+          parquet_compression = 'SNAPPY',
+          external_location = 's3://{output_bucket}/{output_prefix}'
+    ) AS (
+        SELECT
+          CAST(NewImage.rid.N AS BIGINT)                 AS resource_id,
+          lower(CAST(NewImage.rt.S AS VARCHAR))          AS resource_type,                  -- rewardsvc와 달리 pointsvc dynamodb에 대문자로 저장되고있어 lower case로 바꿈
+          CAST(NewImage.e.S AS VARCHAR)                  AS event_type,
+          CAST(NewImage.rdid.S AS VARCHAR)               AS redeem_id,
+          CAST(NewImage.rdt.S AS VARCHAR)                AS redeem_type,
+          CAST(NewImage.rs.S AS VARCHAR)                 AS redeem_status,
+          CAST(NewImage.a.N AS BIGINT)                   AS amount,
+          CAST(NewImage.ds.N AS BIGINT)                  AS deposit_sum,
+          CAST(NewImage.ws.N AS BIGINT)                  AS withdraw_sum,
+          CAST(NewImage.acid.N AS BIGINT)                AS account_id,
+          CAST(NewImage.apid.N AS BIGINT)                AS app_id,
+          CAST(NewImage.puid.S AS VARCHAR)               AS publisher_user_id,
+          CAST(NewImage.rtid.S AS VARCHAR)               AS reward_transaction_id,
+          CAST(NewImage.uid.N AS BIGINT)                 AS unit_id,
+          CAST(NewImage.ext.S AS VARCHAR)                AS extra,
+          FROM_UNIXTIME(CAST(NewImage.ca.N AS BIGINT))   AS created_at,
+          FROM_UNIXTIME(CAST(NewImage.ua.N AS BIGINT))   AS updated_at,
+          CAST(NewImage.v.N AS BIGINT)                   AS version,
+          CAST(NewImage.sc.N AS BIGINT)                  AS scatter,
+          sequencenumber                                 AS dynamo_stream_seq_num,
+          approximatecreationdatetime                    AS dynamo_stream_record_created_at,
+          eventname                                      AS dynamo_stream_event_name
+        from
+          {{{{ var.value.get('server_env', 'prod') }}}}_pointsvc.l_point
+        WHERE
+          partition_timestamp >= TIMESTAMP'{start_time}' AND
+          partition_timestamp < TIMESTAMP'{end_time}'
+    );
+  output_bucket: "{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake"
+  output_prefix: pointsvc/gold/stream_point/year={year}/month={month}/day={day}/hour={hour}
+  file_key: pointsvc_g_stream_point
+  file_extension: parquet
+
+  database: "{{ var.value.get('server_env', 'prod') }}_pointsvc"
+  table: g_stream_point
+  location: s3://{{ var.value.get('server_env', 'prod') }}-buzzvil-data-lake/pointsvc/gold/stream_point
+  partition:
+    name: partition_timestamp
+    value: "{{ execution_date.strftime('%Y-%m-%d %H:00:00') }}"
+    location: s3://{{{{ var.value.get('server_env', 'prod') }}}}-buzzvil-data-lake/pointsvc/gold/stream_point/year={year}/month={month}/day={day}/hour={hour}
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+      resource_id           BIGINT,
+      resource_type         VARCHAR(16),
+      event_type            VARCHAR(16),
+      redeem_id             VARCHAR(72),
+      redeem_type           VARCHAR(16),
+      redeem_status         VARCHAR(16),
+
+      amount                BIGINT,
+      deposit_sum           BIGINT,
+      withdraw_sum          BIGINT,
+
+      account_id            BIGINT,
+      app_id                BIGINT,
+      publisher_user_id     VARCHAR(100),
+
+      reward_transaction_id VARCHAR(72),
+      unit_id               BIGINT,
+      extra                 VARCHAR(65535),
+      created_at            TIMESTAMP,
+      updated_at            TIMESTAMP,
+
+      version               BIGINT,
+      scatter               BIGINT,
+
+      dynamo_stream_seq_num             STRING,
+      dynamo_stream_record_created_at   TIMESTAMP,
+      dynamo_stream_event_name          VARCHAR(255)
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    STORED AS PARQUET
+    LOCATION '{location}'
+    tblproperties("parquet.compress"="SNAPPY");

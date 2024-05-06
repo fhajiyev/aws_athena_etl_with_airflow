@@ -1,0 +1,251 @@
+# Note that
+#
+---
+pipeline_key: m1_d_unit__user_metric
+pipeline_type: redshift_transform_load
+pipeline_dag_configs:
+  start_date: 2020-01-01 16:00:00
+  schedule_interval: "0 16 * * *"
+
+alerts:
+  slack:
+    - trigger: failure
+      args:
+        channel: data-emergency
+    - trigger: sla_miss
+      args:
+        channel: data-emergency
+    - trigger: retry
+      args:
+        channel: data-warning
+
+upstream_dependencies:
+  - dag_id: athena_redshift_sync_ba_imp_dau
+    timedelta_hours: 0
+  - dag_id: athena_redshift_sync_ba_alloc_dau
+    timedelta_hours: 0
+  - dag_id: redshift_transform_load_ba_alloc_nru
+    timedelta_hours: 0
+
+transform:
+  select_query: |
+    WITH
+    units AS (
+        SELECT
+            id,
+            name,
+            unit_type
+        FROM
+            ba_unit u
+    )
+      SELECT
+          data_at AS kst_at,
+          unit_id,
+          unit_name,
+          unit_type,
+          SUM(dau) as dau,
+          SUM(dua) as dua,
+          SUM(nru) as nru,
+          SUM(mau) as mau,
+          SUM(mua) as mua
+      FROM
+        (
+            -- benefit_stats
+            SELECT
+                data_at, unit_id, unit_name, unit_type, dau, dua, nru, mau, mua
+            FROM
+                (
+                  SELECT
+                      s.data_at,
+                      u.id AS unit_id,
+                      u.name AS unit_name,
+                      u.unit_type AS unit_type,
+                      SUM(s.dau) AS dau,
+                      0 AS dua,
+                      SUM(s.nru) AS nru,
+                      SUM(s.mau) AS mau,
+                      0 AS mua
+                  FROM
+                  (
+                      SELECT
+                          created_at as data_at,
+                          unit_id,
+                          COUNT(ifa) as dau,
+                          0 as nru,
+                          0 as mau
+                      FROM
+                          ba_alloc_dau
+                      WHERE
+                          created_at >= TIMESTAMP'{start_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS' AND
+                          created_at < TIMESTAMP'{end_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS'
+                      GROUP BY
+                          1, 2
+
+                      UNION ALL
+
+                      SELECT
+                          TIMESTAMP'{start_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS' AS data_at,
+                          unit_id,
+                          0 AS dau,
+                          0 AS nru,
+                          COUNT(DISTINCT ifa) AS mau
+                      FROM
+                          ba_alloc_dau
+                      WHERE
+                          created_at >= DATE_TRUNC('month', TIMESTAMP'{start_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS') AND
+                          created_at < TIMESTAMP'{end_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS'
+                      GROUP BY
+                          1, 2
+
+                      UNION ALL
+
+                      SELECT
+                          date_joined as data_at,
+                          unit_id,
+                          0 as dau,
+                          COUNT(ifa) as nru,
+                          0 AS mau
+                      FROM
+                          ba_alloc_nru
+                      WHERE
+                          date_joined >= TIMESTAMP'{start_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS' AND
+                          date_joined < TIMESTAMP'{end_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS'
+                      GROUP BY
+                          1, 2
+                  ) s INNER JOIN units u ON
+                      s.unit_id = u.id
+                  WHERE
+                      u.unit_type <> 'L'
+                  GROUP BY
+                      1, 2, 3, 4
+                )
+
+            UNION ALL
+
+            -- lockscreen_stats
+            -- cannot calculate lockscreen MAU, MUA from bs_statistics_user
+            SELECT
+                data_at, unit_id, unit_name, unit_type, dau, dua, nru, mau, mua
+            FROM
+                (
+                  SELECT
+                      s.data_at as data_at,
+                      s.unit_id,
+                      u.name AS unit_name,
+                      u.unit_type AS unit_type,
+                      dau,
+                      0 as dua,
+                      nru,
+                      0 AS mau,
+                      0 AS mua
+                  FROM
+                      bs_statistics_user s
+                      INNER JOIN units u ON
+                          s.unit_id = u.id
+                  WHERE
+                      data_at >= TIMESTAMP'{start_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS' AND
+                      data_at < TIMESTAMP'{end_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS' AND
+                      u.unit_type = 'L'
+                )
+
+          UNION ALL
+
+          -- viewer_stats
+          SELECT
+              data_at, unit_id, unit_name, unit_type, dau, dua, nru, mau, mua
+          FROM
+              (
+                SELECT
+                    s.created_at as data_at,
+                    u.id as unit_id,
+                    u.name as unit_name,
+                    u.unit_type AS unit_type,
+                    0 AS dau,
+                    COUNT(s.ifa) AS dua,
+                    0 AS nru,
+                    0 AS mau,
+                    0 AS mua
+                FROM
+                    g_buzzad_imp_dau s
+                    INNER JOIN units u ON
+                        s.unit_id = u.id
+                WHERE
+                    s.created_at >= TIMESTAMP'{start_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS' AND
+                    s.created_at < TIMESTAMP'{end_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS'
+                GROUP BY
+                    1, 2, 3, 4
+              )
+
+          UNION ALL
+
+          -- viewer_mua_stats
+          SELECT
+              TIMESTAMP'{start_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS' AS data_at,
+              unit_id, unit_name, unit_type, dau, dua, nru, mau, mua
+          FROM
+              (
+                SELECT
+                    u.id                    AS unit_id,
+                    u.name                  AS unit_name,
+                    u.unit_type             AS unit_type,
+                    0                       AS dau,
+                    0                       AS dua,
+                    0                       AS nru,
+                    0                       AS mau,
+                    COUNT(DISTINCT s.ifa)   AS mua
+                FROM
+                    g_buzzad_imp_dau s
+                    INNER JOIN units u ON
+                        s.unit_id = u.id
+                WHERE
+                    s.created_at >= DATE_TRUNC('month', TIMESTAMP'{start_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS') AND
+                    s.created_at < TIMESTAMP'{end_time}' - INTERVAL '16 hours' + INTERVAL '24 HOURS'
+                GROUP BY
+                    1, 2, 3
+              )
+        )
+      GROUP BY
+          1, 2, 3, 4
+  delete_query : |
+    DELETE
+    FROM
+      datavil.m1_d_unit__user_metric
+    WHERE
+      kst_at >= TIMESTAMP'{start_time}' - interval '16 hours' + INTERVAL '24 HOURS' AND
+      kst_at < TIMESTAMP'{end_time}' - interval '16 hours' + INTERVAL '24 HOURS'
+
+redshift:
+  table_name: datavil.m1_d_unit__user_metric
+  fields:
+  - kst_at
+  - unit_id
+  - unit_name
+  - unit_type
+  - dau
+  - dua
+  - nru
+  - mau
+  - mua
+  unique_key_list:
+  - kst_at
+  - unit_id
+  increment_key: kst_at
+  increment_key_type: timestamp
+  copy_method: incremental
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      kst_at      TIMESTAMP       ENCODE AZ64,
+      unit_id     BIGINT          ENCODE AZ64,
+      unit_name   VARCHAR(1024)   ENCODE ZSTD,
+      unit_type   VARCHAR(64)     ENCODE ZSTD,
+      dau         INT             ENCODE AZ64,
+      dua         INT             ENCODE AZ64,
+      nru         INT             ENCODE AZ64,
+      mau         INT             ENCODE AZ64,
+      mua         INT             ENCODE AZ64,
+      UNIQUE(kst_at, unit_id)
+    )
+    DISTKEY(unit_id)
+    SORTKEY(kst_at)
+    ;

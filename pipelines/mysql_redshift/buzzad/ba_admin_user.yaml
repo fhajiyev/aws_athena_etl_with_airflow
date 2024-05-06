@@ -1,0 +1,38 @@
+# Users table is required in data_warehouse for identifying lineitem.owner_id
+---
+pipeline_key: ba_admin_user
+pipeline_type: mysql_redshift
+incremental_sync: False
+mysql:
+  conn_id: buzzad_mysql
+  table_name: users
+  fields:
+  - id
+  - name
+  - organization_id
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id
+
+redshift:
+  table_name: ba_admin_user
+  fields:
+  - id
+  - name
+  - organization_id
+  copy_method: replace
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      id                     INT8            NOT NULL       ENCODE ZSTD,
+      name                   VARCHAR(256)    NOT NULL       ENCODE LZO,
+      organization_id        INT8            NOT NULL       ENCODE ZSTD,
+      PRIMARY KEY(id)
+    )
+    DISTSTYLE ALL
+    ;
+  increment_key: id
+  increment_key_type: dump
+  unique_key_list:
+  - id

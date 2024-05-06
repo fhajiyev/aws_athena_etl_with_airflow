@@ -1,0 +1,120 @@
+# README
+# namespace & container: namespace & container are used to find log prefix in s3
+#                        s3://prod-buzzvil-data-lake/eks/cluster-logs/{namespace}/{container}
+# start_date: set first log created time as start_date
+#             s3://prod-buzzvil-data-lake/eks/cluster-logs/{namespace}/{container}/{year}/{month}/{day}/{hour}
+# alias: (optional) alias of dag_id (default: namespace name)
+# table_alias: (optional) table alias in athena, (default: "l_log", set table_alias: "l_{table_alias}_log")
+---
+catalogs:
+  - namespace: abtestsvc
+    start_date: 2020-08-28 08:00:00
+  - namespace: accountsvc
+    start_date: 2020-09-23 00:00:00
+  - namespace: adnsvc
+    start_date: 2020-03-11 02:00:00
+  - namespace: adnreportsvc
+    start_date: 2020-03-11 02:00:00
+  - namespace: adrecommendersvc
+    start_date: 2020-03-11 02:00:00
+  - namespace: authsvc
+    start_date: 2020-03-11 02:00:00
+  - namespace: biddersvc
+    start_date: 2020-06-23 07:00:00
+  - namespace: billingsvc
+    start_date: 2020-04-07 02:00:00
+  - namespace: bridgesvc
+    start_date: 2020-03-11 02:00:00
+  - namespace: buzzad
+    start_date: 2020-03-11 02:00:00
+    alias: ba
+  - namespace: buzzscreen
+    start_date: 2020-03-11 02:00:00
+    alias: bs
+    table_alias: django # prod_buzzscreen.l_django_log
+  - namespace: buzzscreen
+    container: buzzscreen-api
+    start_date: 2020-03-11 02:00:00
+    alias: bs
+  - namespace: buzzwalk
+    start_date: 2020-04-23 06:00:00
+  - namespace: configsvc
+    start_date: 2020-03-11 06:00:00
+  - namespace: content-dedup
+    container: main
+    start_date: 2020-09-02 05:00:00
+    alias: content_dedup
+    table_alias: main
+  - namespace: content-dedup
+    container: wait
+    start_date: 2020-09-02 05:00:00
+    alias: content_dedup
+    table_alias: wait
+  - namespace: creativfiltersvc
+    start_date: 2020-03-11 02:00:00
+  - namespace: dash
+    container: dash-api-gateway
+    start_date: 2020-03-11 02:00:00
+  - namespace: geosvc
+    start_date: 2020-03-11 02:00:00
+  - namespace: lotterysvc
+    start_date: 2020-06-02 07:00:00
+  - namespace: pixelsvc
+    start_date: 2020-03-20 07:00:00
+  - namespace: pointsvc
+    start_date: 2020-04-06 10:00:00
+  - namespace: postbacksvc
+    start_date: 2020-03-11 02:00:00
+  - namespace: productrecommendersvc
+    start_date: 2020-03-31 00:00:00
+  - namespace: profilesvc
+    start_date: 2020-03-11 02:00:00
+  - namespace: redash
+    container: redash-server
+    start_date: 2020-08-11 13:00:00
+  - namespace: renderer
+    start_date: 2020-03-11 02:00:00
+  - namespace: rewardedcontent
+    start_date: 2020-03-11 02:00:00
+  - namespace: rewardsvc
+    start_date: 2020-03-11 02:00:00
+  - namespace: segmentsvc
+    start_date: 2020-03-11 02:00:00
+  - namespace: statssvc
+    start_date: 2020-03-11 02:00:00
+  - namespace: weathersvc
+    start_date: 2020-03-11 02:00:00
+  - namespace: wordvectorsvc
+    start_date: 2020-03-11 02:00:00
+  
+
+athena:
+  database: "{env}_{namespace}"
+  location: "s3://{env}-buzzvil-data-lake/eks/cluster-logs/{namespace}/{container}"
+  partition:
+    name: partition_timestamp
+    location: "s3://{env}-buzzvil-data-lake/eks/cluster-logs/{namespace}/{container}/{year}/{month}/{day}/{hour}"
+    value: "{execution_date}"
+  create_table_syntax: |
+    CREATE EXTERNAL TABLE IF NOT EXISTS {database}.{table} (
+        log        STRING,
+        time       TIMESTAMP,
+        kubernetes MAP<STRING, STRING>,
+        stream     STRING
+    )
+    PARTITIONED BY (partition_timestamp timestamp)
+    ROW FORMAT SERDE 'org.apache.hive.hcatalog.data.JsonSerDe'
+    WITH SERDEPROPERTIES (
+      'timestamp.formats'="yyyy-MM-dd'T'HH:mm:ss.SSSSSSSSS'Z',\
+      yyyy-MM-dd'T'HH:mm:ss.SSSSSSSS'Z',\
+      yyyy-MM-dd'T'HH:mm:ss.SSSSSSS'Z',\
+      yyyy-MM-dd'T'HH:mm:ss.SSSSSS'Z',\
+      yyyy-MM-dd'T'HH:mm:ss.SSSSS'Z',\
+      yyyy-MM-dd'T'HH:mm:ss.SSSS'Z',\
+      yyyy-MM-dd'T'HH:mm:ss.SSS'Z',\
+      yyyy-MM-dd'T'HH:mm:ss.SS'Z',\
+      yyyy-MM-dd'T'HH:mm:ss.S'Z',\
+      yyyy-MM-dd'T'HH:mm:ss'Z'"
+    )
+    STORED AS TEXTFILE
+    LOCATION '{location}';

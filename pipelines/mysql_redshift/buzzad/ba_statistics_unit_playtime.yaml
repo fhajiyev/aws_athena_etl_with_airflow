@@ -1,0 +1,72 @@
+---
+pipeline_key: ba_statistics_unit_playtime
+pipeline_type: mysql_redshift
+incremental_sync: True
+
+mysql:
+  conn_id: buzzad_mysql
+  table_name: statistics_unit_playtime
+  fields:
+  - id
+  - lineitem_id
+  - unit_id
+  - play_start_count
+  - quarter_0_count
+  - quarter_1_count
+  - quarter_2_count
+  - quarter_3_count
+  - quarter_4_count
+  - final_landing_count
+  - data_at
+  - updated_at
+  - created_at
+  increment_key: updated_at
+  increment_key_type: timestamp
+  unique_key_list:
+  - lineitem_id
+  - unit_id
+  - data_at
+
+redshift:
+  table_name: ba_statistics_unit_playtime
+  fields:
+  - id
+  - lineitem_id
+  - unit_id
+  - play_start_count
+  - quarter_0_count
+  - quarter_1_count
+  - quarter_2_count
+  - quarter_3_count
+  - quarter_4_count
+  - final_landing_count
+  - data_at
+  - updated_at
+  - created_at
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+        id                    INT8        NOT NULL             ENCODE ZSTD,
+        lineitem_id           INT8        NOT NULL             ENCODE ZSTD,
+        unit_id               INT8        NOT NULL             ENCODE ZSTD,
+        play_start_count      INT4        NOT NULL DEFAULT 0   ENCODE ZSTD,
+        quarter_0_count       INT4        NOT NULL DEFAULT 0   ENCODE ZSTD,
+        quarter_1_count       INT4        NOT NULL DEFAULT 0   ENCODE ZSTD,
+        quarter_2_count       INT4        NOT NULL DEFAULT 0   ENCODE ZSTD,
+        quarter_3_count       INT4        NOT NULL DEFAULT 0   ENCODE ZSTD,
+        quarter_4_count       INT4        NOT NULL DEFAULT 0   ENCODE ZSTD,
+        final_landing_count   INT4        DEFAULT NULL         ENCODE ZSTD,
+        data_at               TIMESTAMP   NOT NULL             ENCODE ZSTD,
+        updated_at            TIMESTAMP   NOT NULL             ENCODE ZSTD,
+        created_at            TIMESTAMP   NOT NULL             ENCODE ZSTD,
+        PRIMARY KEY(id)
+    )
+    DISTKEY(lineitem_id)
+    SORTKEY(data_at, unit_id, lineitem_id);
+  increment_key: updated_at
+  increment_key_type: timestamp
+  unique_key_list:
+  - lineitem_id
+  - unit_id
+  - data_at

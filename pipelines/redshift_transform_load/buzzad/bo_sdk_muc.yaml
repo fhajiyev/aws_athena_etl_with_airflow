@@ -1,0 +1,53 @@
+# Note that
+# - interval '1 hours' is actually "interval - 16 (execution time) + 24 (day offset) - 9( utc conversion)
+---
+pipeline_key: bo_sdk_muc
+pipeline_type: redshift_transform_load
+pipeline_dag_configs:
+  start_date: 2018-01-01 16:00:00
+  schedule_interval: "0 16 1 * *"
+transform:
+  select_query: |
+    select
+      date_trunc ('month',c.partition_timestamp + interval '9 hours') as data_at,
+      u.name as unit_name,
+      count(distinct c.ifa) muc
+    from
+      spectrum.ba_click c, ba_unit u
+    where
+      c.partition_timestamp  >= TIMESTAMP'{start_time}' - interval '1 hours'
+      and c.partition_timestamp  < TIMESTAMP'{end_time}' - interval '1 hours'
+      and c.unit_id=u.id
+      and u.name like 'BO%SDK%OP'
+      and u.unit_type='O'
+      and u.country='KR'
+    group by 1, 2
+  delete_query : |
+    DELETE
+    FROM
+      bo_sdk_muc
+    WHERE
+      data_at  >= TIMESTAMP'{start_time}' - interval '1 hour' - interval '9 hour'
+      and data_at < TIMESTAMP'{end_time}' - interval '1 hour' - interval '9 hour'
+redshift:
+  table_name: bo_sdk_muc
+  fields:
+  - data_at
+  - unit_name
+  - muc
+  unique_key_list:
+  - unit_name
+  - data_at
+  increment_key: data_at
+  increment_key_type: timestamp
+  copy_method: upsert
+  create_table_syntax: |
+    CREATE TABLE IF NOT EXISTS {table_name}
+    (
+      data_at                 TIMESTAMP      NOT NULL       ENCODE AZ64,
+      unit_name               VARCHAR(64)    DEFAULT NULL   ENCODE ZSTD,
+      muc                     INT8           DEFAULT NULL   ENCODE AZ64
+    )
+    DISTKEY(unit_name)
+    SORTKEY(data_at)
+    ;

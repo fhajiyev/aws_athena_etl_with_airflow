@@ -1,0 +1,35 @@
+---
+    pipeline_key: ba_organization
+    pipeline_type: mysql_redshift
+    incremental_sync: False
+    mysql:
+      conn_id: buzzad_mysql
+      table_name: organizations
+      fields:
+      - id
+      - name
+      increment_key: id
+      increment_key_type: dump
+      unique_key_list:
+      - id
+    
+    redshift:
+      table_name: ba_organization
+      fields:
+      - id
+      - name
+      copy_method: replace
+      create_table_syntax: |
+        CREATE TABLE IF NOT EXISTS {table_name}
+        (
+          id                     INT8            NOT NULL       ENCODE AZ64,
+          name                   VARCHAR(255)    NOT NULL       ENCODE ZSTD,
+          PRIMARY KEY(id)
+        )
+        DISTSTYLE ALL
+        ;
+      increment_key: id
+      increment_key_type: dump
+      unique_key_list:
+      - id
+    
